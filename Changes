@@ -225,3 +225,10 @@ Expect v1.13_08
 ===============
 
 ! fixed bug in log_file, parameter now gets set to undef.
+
+
+Expect v1.13_10
+===============
+
+! fixed select in interconnect, may return -1 if interrupted by signal.
+

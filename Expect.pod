@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.13_08 BETA
+1.14
 
 =head1 SYNOPSIS
 
@@ -729,6 +729,13 @@ You still cannot use ActivePerl, but if you use the Cygwin environment
 (http://sources.redhat.com), which brings its own perl, and have
 the latest IO::Tty (v0.05 or later) installed, it should work (feedback
 appreciated).
+
+
+=head2 The examples in the tutorial don't work!
+
+The tutorial is hopelessly out of date and needs a serious overhaul.
+I appologize for this, I have concentrated my efforts mainly on the
+functionality.  Volunteers welcomed.
 
 
 =head2 How can I find out what Expect is doing?

@@ -2,14 +2,14 @@ use ExtUtils::MakeMaker;
 # See lib/ExtUtils/MakeMaker.pm for details of how to influence
 # the contents of the Makefile that is written.
 
-my $Is_Beta = 1;
+my $Is_Beta = 0;
 
 WriteMakefile(
 	      'NAME'	     => 'Expect',
 	      'VERSION_FROM' => 'Expect.pm',
 	      'PREREQ_PM'    => {
-                                  'IO::Tty' => 0.97,
-                                  'IO::Pty' => 0.97,
+                                  'IO::Tty' => 1.00,
+                                  'IO::Pty' => 1.00,
 				},
 	      'clean'        => { 'FILES' => '*.log' },
 	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },

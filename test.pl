@@ -307,22 +307,18 @@ print "\nChecking if signal exit status is returned correctly...\n\n";
   my $status = $exp->soft_close();
   printf "soft_close: 0x%04X\n", $status;
   ok($exp->exitstatus() == $status);
-  if ($^O =~ m/cygwin|bsd|solaris/i) {
-    # signal number returned as exit status 128 + number
-    $status = ($status >> 8) & 0x7F;
-  } else {
-    # signal number returned in lower 8 bits
-    $status &= 0x7F;
-  }
-  if ($status == 15) {
-    ok(1);
-  } else {
-    print "Sorry, we expected to get 15 but got $status instead.\n";
-    ok(0);
-  }
+  my ($hi, $lo) = (($status >> 8) & 0x7F, $status & 0x7F);
+
+  ok($hi == 15 or $lo == 15);
 }
 
-print "\nChecking if EOF on pty slave is correctly reported to master...\n\n";
+print <<__EOT__;
+
+Checking if EOF on pty slave is correctly reported to master...
+(this fails on about 50% of the supported systems, so don't panic!
+ Expect will work anyway!)
+
+__EOT__
 
 {
   my $exp = new Expect($Perl . q{ -e 'close STDIN; close STDOUT; close STDERR; sleep 3;'});
@@ -336,7 +332,7 @@ print "\nChecking if EOF on pty slave is correctly reported to master...\n\n";
 print "Passed $oknr of $maxnr tests.\n";
 print <<__EOT__ if ($oknr != $maxnr);
 Please scroll back and check which test(s) failed and what comments
-were given.  Expect probably is still completely usable to you!!
+were given.  Expect probably is still completely usable!!
 __EOT__
 
 exit(0);

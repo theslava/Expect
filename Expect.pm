@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_08";
+  $Expect::VERSION = 1.14;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -1117,8 +1117,8 @@ sub interconnect {
 
     # Every second? No, go until we get something from someone.
     ($nfound) = select($rout = $read_mask, undef, $eout = $emask, undef);
-    # Is there anything to share?
-    next CONNECT_LOOP unless $nfound;
+    # Is there anything to share?  May be -1 if interrupted by a signal...
+    next CONNECT_LOOP if not defined $nfound or $nfound < 1;
     # Which handles have stuff?
     @bits = split(//,unpack('b*',$rout));
     $eout = 0 unless defined ($eout);

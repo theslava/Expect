@@ -1,5 +1,5 @@
 
-Expect.pm v1.13
+Expect.pm v1.14
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -14,10 +14,10 @@ If you prefer manual installation, the usual
   make test
   make install
 
-should work.  I finally started a simple testsuite for Expect, but it
-doesn't really test anything deeper right now.  The problem is to find
-some external program to use for generating reproducible output that
-is available across all platforms.  Luckily, we can always use perl
+should work.  I finally started a testsuite for Expect, but it doesn't
+really test anything deeper right now.  The problem is to find some
+external program to use for generating reproducible output that is
+available across all platforms.  Luckily, we can always use perl
 itself...  Contributions to the testsuite are of course welcome.
 
 Note that IO::Tty is very system-dependend.  It has been extensively
@@ -76,10 +76,26 @@ From the Changes file:
 
 ! spawn() now synchronizes child and parent, so exec errors are reported.
 
++ timeout handlers now also can exp_continue
+
++ added 'raw_pty' option, also setting master to raw if isatty()
+
++ added and corrected test for exit status; got rid of Test.pm
+
+! use 'set_raw' instead of stty("raw"); IO::Stty now optional
+
++ updated docs & FAQs; explained how terminal sizes and SIGWINCH
+  should be propagated
+
+! fixed bug in log_file, parameter now gets set to undef.
+
+! fixed select in interconnect, may return -1 if interrupted by signal.
+
+
 Thanks to everybody who wrote to me, either with bug reports or
 enhancement suggestions!
 
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2002-02-26
+2002-03-12
