@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.13_04
+1.13_06 BETA
 
 =head1 SYNOPSIS
 
@@ -57,8 +57,10 @@ The public functions that make up Expect.pm are:
   Expect::test_handles($timeout, @objects_to_test)
   Expect::version($version_requested | undef);
   $object->clear_accum()
+  $object->set_accum($value)
   $object->debug($debug_level)
   $object->exp_internal(0 | 1 | undef)
+  $object->notransfer(0 | 1 | undef)
   $object->stty(@stty_modes) # See the IO::Stty docs
   $object->slave_pty()
   $object->before();
@@ -361,13 +363,19 @@ no pattern was matched. It is typically useful to examine the value returned by
 before() to find out what the output of the object was in determining
 why it didn't match any of the patterns.
 
-=item $object->clear_accum() I<or>
 
+=item $object->clear_accum()
 
 Clear the contents of the accumulator for $object. This gets rid of
 any residual contents of a handle after expect() or send_slow() such
 that the next expect() call will only see new data from $object. The
 contents of the accumulator are returned.
+
+
+=item $object->set_accum($value)
+
+Sets the content of the accumulator for $object to $value. The
+previous content of the accumulator is returned.
 
 
 =item $object->exp_command() I<or>
@@ -408,6 +416,35 @@ aliveness testing and still expect for patterns.
 
 Now the timeout isn't triggered if the command produces any kind of output,
 i.e. is still alive, but you can act upon patterns in the output.
+
+
+=item $object->notransfer(1 | 0)
+
+Do not truncate the content of the accumulator after a match.
+Normally, the accumulator is set to the remains that come after the
+matched string.  Note that this setting is per object and not per
+pattern, so if you want to have normal acting patterns that truncate
+the accumulator, you have to add a
+
+    $exp->set_accum($exp->after);
+
+to their callback, e.g.
+
+    $exp->notransfer(1);
+    $exp->expect($timeout,
+                 # accumulator not truncated, pattern1 will match again
+                 [ "pattern1" => sub { my $self = shift;
+                                       ...
+                                     } ],
+                 # accumulator truncated, pattern2 will not match again
+                 [ "pattern2" => sub { my $self = shift;
+                                       ...
+                                       $self->set_accum($self->after());
+                                     } ],
+                );
+
+This is only a temporary fix until I can rewrite the pattern matching
+part so it can take that additional -notransfer argument.
 
 
 =item Expect::interconnect(@objects);

@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_04";
+  $Expect::VERSION = "1.13_06";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -127,6 +127,7 @@ sub spawn {
     ${*$self}{exp_Pid} = $pid;
     close STAT_WTR;
     $self->close_slave();
+    $self->stty("raw") if $self->raw_pty and isatty($self);
 
     # now wait for child exec (eof due to close-on-exit) or exec error
     my $errstatus = sysread(STAT_RDR, $errno, 256);
@@ -384,9 +385,17 @@ sub exp_stty {
 # If we want to clear the buffer. Otherwise Accum will grow during send_slow
 # etc. and contain the remainder after matches.
 sub clear_accum {
-  my($self) = shift;
+  my ($self) = shift;
   my ($temp) = (${*$self}{exp_Accum});
   ${*$self}{exp_Accum} = '';
+  # return the contents of the accumulator.
+  return $temp;
+}
+
+sub set_accum {
+  my ($self) = shift;
+  my ($temp) = (${*$self}{exp_Accum});
+  ${*$self}{exp_Accum} = shift;
   # return the contents of the accumulator.
   return $temp;
 }
@@ -596,6 +605,7 @@ sub _multi_expect($$@) {
  READLOOP:
   while ($exp_cont) {
     $exp_cont = 1;
+    $err = "";
     my $rmask = '';
     my $time_left = undef;
     if (defined $timeout) {
@@ -751,7 +761,39 @@ sub _multi_expect($$@) {
     my $nfound = select($rmask, undef, undef, $time_left);
 
     # go until we don't find something (== timeout).
-    last READLOOP unless ($nfound);
+    if (not $nfound) {
+      # No pattern, no EOF. Did we time out?
+      $err = "1:TIMEOUT";
+      foreach my $pat (@_) {
+	foreach my $exp (@{$pat->[0]}) {
+	  $before = ${*$exp}{exp_Before} = ${*$exp}{exp_Accum};
+	  next if not defined $exp->fileno(); # skip already closed
+	  ${*$exp}{exp_Error} = $err unless ${*$exp}{exp_Error};
+	}
+      }
+      print STDERR ("TIMEOUT\r\n")
+	if ($Expect::Debug or $Expect::Exp_Internal);
+      if ($timeout_hook) {
+	my $ret;
+	print STDERR ("Calling timeout function $timeout_hook...\r\n")
+	  if ($Expect::Debug or $Expect::Exp_Internal);
+	if (ref($timeout_hook) eq 'CODE') {
+	  $ret = &{$timeout_hook}($_[0]->[0]);
+	} else {
+	  if ($#{$timeout_hook} > 3) {
+	    $ret = &{$timeout_hook->[3]}($_[0]->[0],
+					 @{$timeout_hook}[4..$#{$timeout_hook}]);
+	  } else {
+	    $ret = &{$timeout_hook->[3]}($_[0]->[0]);
+	  }
+	}
+	if ($ret eq exp_continue) {
+	  $start_loop_time = time();	# restart timeout count
+	  next READLOOP;
+	}
+      }
+      last READLOOP;
+    }
 
     my @bits = split(//,unpack('b*',$rmask));
     foreach my $pat (@_) {
@@ -841,34 +883,6 @@ sub _multi_expect($$@) {
   # End READLOOP
 
   # Post loop. Do we have anything?
-  # No pattern, no EOF. Did we time out or is the process dead?
-  if (not $exp_matched and not $err) {
-    $err = "1:TIMEOUT";
-    foreach my $pat (@_) {
-      foreach my $exp (@{$pat->[0]}) {
-	$before = ${*$exp}{exp_Before} = ${*$exp}{exp_Accum};
-	next if not defined $exp->fileno(); # skip already closed
-	${*$exp}{exp_Error} = $err unless ${*$exp}{exp_Error};
-      }
-    }
-    print STDERR ("TIMEOUT\r\n")
-      if ($Expect::Debug or $Expect::Exp_Internal);
-    if ($timeout_hook) {
-      print STDERR ("Calling timeout function $timeout_hook...\r\n")
-	if ($Expect::Debug or $Expect::Exp_Internal);
-      if (ref($timeout_hook) eq 'CODE') {
-	&{$timeout_hook}($_[0]->[0]);
-      } else {
-	if ($#{$timeout_hook} > 3) {
-	  &{$timeout_hook->[3]}($_[0]->[0],
-				@{$timeout_hook}[4..$#{$timeout_hook}]);
-	} else {
-	  &{$timeout_hook->[3]}($_[0]->[0]);
-	}
-      }
-    }
-  }
-
   # Tell us status
   if ($Expect::Debug or $Expect::Exp_Internal) {
       if ($exp_matched) {

@@ -8,8 +8,8 @@ WriteMakefile(
 	      'NAME'	     => 'Expect',
 	      'VERSION_FROM' => 'Expect.pm',
 	      'PREREQ_PM'    => { 'IO::Stty' => '0.02',
-                                  'IO::Tty' => '0.94',
-                                  'IO::Pty' => '0.94',
+                                  'IO::Tty' => '0.95',
+                                  'IO::Pty' => '0.95',
 				},
 	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
 	      );

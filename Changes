@@ -192,3 +192,16 @@ Expect v1.13
 
 ! spawn() now uses IO::Pty spawn, thus exec errors are reported and
   ssh should work too!
+
+Expect v1.13_06
+===============
+
+! spawn is back again
+
++ rearranged and changed tests to better suit the various systems
+
++ added rudimentary 'notransfer' option; global only, not on per-pattern-basis
+
++ timeout handlers now also can exp_continue
+
++ added 'raw_pty' option, also setting master to raw if isatty()
