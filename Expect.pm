@@ -15,11 +15,11 @@
 # Roland Giersig <RGiersig@cpan.org>
 #
 
-require 5;			# 4 won't cut it. 
+use 5;				# 4 won't cut it. 
 
 package Expect;
 
-use IO::Pty;			# This appears to require 5.004
+use IO::Pty 0.92;		# We rely on a working spawn()
 use IO::Stty;
 
 use strict 'refs';
@@ -28,6 +28,7 @@ use strict 'subs';
 use POSIX;			# For setsid. 
 use Fcntl;			# For checking file handle settings.
 use Carp qw(cluck croak carp confess);
+use IO::Handle;
 use Exporter;
 
 # This is necessary to make routines within Expect work.
@@ -36,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.12";
+  $Expect::VERSION = "1.13_01";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -72,70 +73,63 @@ sub version {
   return $Expect::VERSION;
 }
 
-sub new { goto &spawn; }	# We should be called as Expect->spawn
-                                # or spawn Expect
+sub new {
 
-sub spawn {
-  my($tty);
-  my($name_of_tty);
   my ($class) = shift;
+  $class = ref($class) if ref($class); # so we can be called as $exp->new()
+
   # Create the pty which we will use to pass process info.
   my($self) = new IO::Pty;
-  bless ($self, $class);
-  my(@cmd) = @_;	# spawn is passed command line args.
-  ${*$self}{"exp_Command"} = \@cmd;
-  $name_of_tty = $self->IO::Pty::ttyname();
+  my $name_of_tty = $self->ttyname();
   die "$class: Could not assign a pty" unless $name_of_tty;
-  $self->autoflush();
+  bless $self => $class;
+  ${*$self}{exp_Slave_Pty} = $self->slave(); # Create slave handle.
+  $self->autoflush(1);
 
   # This is defined here since the default is different for
   # initialized handles as opposed to spawned processes.
   ${*$self}{exp_Log_Stdout} = 1;
   $self->_init_vars();
 
-  ${*$self}{exp_Pid} = fork;
-  unless (defined (${*$self}{exp_Pid})) {
-    warn "Cannot fork: $!";
-    return undef;
+  if (@_) {
+    # we got add'l parms, so pass them to spawn
+    return $self->spawn(@_);
   }
-  unless (${*$self}{exp_Pid}) {
-    # Child
-    # Create a new 'session', lose controlling terminal.
-    POSIX::setsid() || warn "Couldn't perform setsid. Strange behavior may result.\r\n Problem: $!\r\n";
-    $tty = $self->IO::Pty::slave(); # Create slave handle.
-    # We have to close everything and then reopen ttyname after to get
-    # a controlling terminal.
-    close($self);
-    close STDIN; close STDOUT;
-    open(STDIN,"<&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for reading, $!\r\n";
-    open(STDOUT,">&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for writing, $!\r\n";
-    close STDERR; # put that here or we would never see those die's above...
-    open(STDERR,">&". $tty->fileno()) || die "Couldn't redirect STDERR, $!\r\n";
-
-    exec (@cmd);
-#    open(STDERR,">&2");
-    die "Cannot exec `@cmd': $!\n";
-    # End Child.
-  }
-
-  # Parent
-  sleep 0;
-
-  # This is sort of for code compatibility, and to make debugging a little
-  # easier. By code compatibility I mean that previously the process's
-  # handle was referenced by $process{Pty_Handle} instead of just $process.
-  # This is almost like 'naming' the handle to the process.
-  # I think this also reflects Tcl Expect-like behavior.
-  ${*$self}{exp_Pty_Handle} = "spawn id(".$self->fileno().")";
-  if ((${*$self}{"exp_Debug"}) or (${*$self}{"exp_Exp_Internal"})) {
-    cluck("Spawned '@cmd'\r\n",
-	  "\t${*$self}{exp_Pty_Handle}\r\n",
-	  "\tPid: ${*$self}{exp_Pid}\r\n",
-	  "\tTty: $name_of_tty\r\n",
-	 );
-  }
-  $Expect::Spawned_PIDs{${*$self}{exp_Pid}} = undef;
   return $self;
+}
+
+sub spawn {
+  my ($class) = shift;
+  my $self;
+
+  if (ref($class)) {
+    $self = $class;
+  } else {
+    $self = $class->new();
+  }
+
+  my(@cmd) = @_;	# spawn is passed command line args.
+  ${*$self}{"exp_Command"} = \@cmd;
+  my $ret = $self->SUPER::spawn(@cmd);
+  if ($ret) {
+    ${*$self}{exp_Pid} = $self->SUPER::slave_pid();
+    # This is sort of for code compatibility, and to make debugging a little
+    # easier. By code compatibility I mean that previously the process's
+    # handle was referenced by $process{Pty_Handle} instead of just $process.
+    # This is almost like 'naming' the handle to the process.
+    # I think this also reflects Tcl Expect-like behavior.
+    ${*$self}{exp_Pty_Handle} = "spawn id(".$self->fileno().")";
+    if ((${*$self}{"exp_Debug"}) or (${*$self}{"exp_Exp_Internal"})) {
+      cluck("Spawned '@cmd'\r\n",
+	    "\t${*$self}{exp_Pty_Handle}\r\n",
+	    "\tPid: ${*$self}{exp_Pid}\r\n",
+	    "\tTty: ".$self->SUPER::ttyname()."\r\n",
+	   );
+    }
+    $Expect::Spawned_PIDs{${*$self}{exp_Pid}} = undef;
+    return $self;
+  }
+  return undef;
 }
 
 
@@ -148,7 +142,7 @@ sub exp_init {
   bless $self, $class;
   croak "exp_init not passed a file object, stopped"
     unless defined($self->fileno());
-  $self->autoflush();
+  $self->autoflush(1);
   # Define standard variables.. debug states, etc.
   $self->_init_vars();
   # Turn of logging. By default we don't want crap from a file to get spewed
@@ -199,6 +193,8 @@ my %Readable_Vars = ( pid               => 'exp_Pid',
 		      exp_pty_handle    => 'exp_Pty_Handle',
 		      pty_handle        => 'exp_Pty_Handle',
 		      exp_logfile       => 'exp_Log_File',
+		      exp_slave_pty     => 'exp_Slave_Pty',
+		      slave_pty         => 'exp_Slave_Pty',
 		      logfile           => 'exp_Log_File',
 		      %Writeable_Vars,
 		    );
@@ -278,7 +274,7 @@ sub set_group {
     warn("Attempting to set a handle group on ${*$self}{exp_Pty_Handle}, ",
 	 "a non-readable handle!\r\n");
   }
-  while ($write_handle = shift) { 
+  while ($write_handle = shift) {
     if ($write_handle->_get_mode() !~ 'w') {
       warn("Attempting to set a non-writeable listen handle ",
 	   "${*$write_handle}{exp_Pty_handle} for ",
@@ -306,12 +302,16 @@ sub log_file {
       # it's a filename
       $fh = new IO::File $file, $mode
 	or croak "Cannot open logfile $file: $!";
-    } elsif (ref($file) ne 'CODE') {
+    }
+    if (ref($file) ne 'CODE') {
       croak "Given logfile doesn't have a 'print' method"
 	if not $fh->can("print");
+      $fh->autoflush(1);		# so logfile is up to date
     }
+
     ${*$self}{exp_Log_File} = $fh;
 }
+
 
 # I'm going to leave this here in case I might need to change something.
 # Previously this was calling `stty`, in a most bastardized manner.
@@ -1041,9 +1041,13 @@ sub interconnect {
   while (1) {
     # test each handle to see if it's still alive.
     foreach $read_handle (@handles) {
-      waitpid(${*$read_handle}{exp_Pid}, WNOHANG) if (defined (${*$read_handle}{exp_Pid}) &&${*$read_handle}{exp_Pid});
-      if (defined(${*$read_handle}{exp_Pid}) &&(${*$read_handle}{exp_Pid}) &&(! kill(0,${*$read_handle}{exp_Pid}))) {
-	print STDERR "Got EOF (${*$read_handle}{exp_Pty_Handle} died) reading ${*$read_handle}{exp_Pty_Handle}\r\n"if ${*$read_handle}{"exp_Debug"};
+      waitpid(${*$read_handle}{exp_Pid}, WNOHANG)
+	if (exists (${*$read_handle}{exp_Pid}) and ${*$read_handle}{exp_Pid});
+      if (exists(${*$read_handle}{exp_Pid})
+	  and (${*$read_handle}{exp_Pid})
+	  and (! kill(0,${*$read_handle}{exp_Pid}))) {
+	print STDERR "Got EOF (${*$read_handle}{exp_Pty_Handle} died) reading ${*$read_handle}{exp_Pty_Handle}\r\n"
+	  if ${*$read_handle}{"exp_Debug"};
 	last CONNECT_LOOP unless defined(${${*$read_handle}{exp_Function}}{"EOF"});
 	last CONNECT_LOOP unless &{${${*$read_handle}{exp_Function}}{"EOF"}}(@{${${*$read_handle}{exp_Parameters}}{"EOF"}});
       }
@@ -1131,6 +1135,18 @@ sub interconnect {
   }
 }
 
+# user can decide if log output gets also sent to logfile
+sub print_log_file {
+  my $self = shift;
+  if (${*$self}{exp_Log_File}) {
+    if (ref(${*$self}{exp_Log_File}) eq 'CODE') {
+      ${*$self}{exp_Log_File}->(@_);
+    } else {
+      ${*$self}{exp_Log_File}->print(@_);
+    }
+  }
+}
+
 # we provide our own print so we can debug what gets sent to the
 # processes...
 sub print (@) {
@@ -1139,16 +1155,13 @@ sub print (@) {
     my $args = _make_readable(join('', @args));
     cluck "Sending '$args' to ${*$self}{exp_Pty_Handle}\r\n";
   }
-  print STDOUT @args
-    if ${*$self}{exp_Log_Stdout};
-  if (${*$self}{exp_Log_File}) {
-    if (ref(${*$self}{exp_Log_File}) eq 'CODE') {
-      ${*$self}{exp_Log_File}->(@args);
-    } else {
-      ${*$self}{exp_Log_File}->print(@args)
+  foreach my $arg (@args) {
+    while (length($arg) > 80) {
+      $self->SUPER::print(substr($arg, 0, 80));
+      $arg = substr($arg, 80);
     }
+    $self->SUPER::print($arg);
   }
-  $self->SUPER::print(@args);
 }
 
 # make an alias for Tcl/Expect users for a DWIM experience...
@@ -1255,17 +1268,18 @@ sub soft_close {
     print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
   }
   # quit now if it isn't a process.
-  return $close_status unless defined($self->pid());
+  return $close_status unless defined(${*$self}{exp_Pid});
   # Now give it 15 seconds to die.
   $end_time = time() + 15;
   while ($end_time > time()) {
-    $returned_pid = waitpid($self->pid(), &WNOHANG);
+    $returned_pid = waitpid(${*$self}{exp_Pid}, &WNOHANG);
     # Stop here if the process dies.
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
+      ${*$self}{exp_Pid} = undef;
       return $?;
     }
     sleep 1;			# Keep loop nice.
@@ -1278,12 +1292,13 @@ sub soft_close {
   # Now to be anal retentive.. wait 15 more seconds for it to die.
   $end_time = time() + 15;
   while ($end_time > time()) {
-    $returned_pid = waitpid($self->pid(), &WNOHANG);
+    $returned_pid = waitpid(${*$self}{exp_Pid}, &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
+      ${*$self}{exp_Pid} = undef;
       return $?;
     }
     sleep 1;
@@ -1304,17 +1319,18 @@ sub hard_close {
     print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
   }
   # Return now if handle.
-  return $close_status unless defined($self->pid());
+  return $close_status unless defined(${*$self}{exp_Pid});
   # Now give it 5 seconds to die. Less patience here if it won't die.
   $end_time = time() + 5;
   while ($end_time > time()) {
-    $returned_pid = waitpid($self->pid(), &WNOHANG);
+    $returned_pid = waitpid(${*$self}{exp_Pid}, &WNOHANG);
     # Stop here if the process dies.
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
+      ${*$self}{exp_Pid} = undef;
       return $?;
     }
     sleep 1;			# Keep loop nice.
@@ -1327,12 +1343,13 @@ sub hard_close {
   # wait 15 more seconds for it to die.
   $end_time = time() + 15;
   while ($end_time > time()) {
-    $returned_pid = waitpid($self->pid(), &WNOHANG);
+    $returned_pid = waitpid(${*$self}{exp_Pid}, &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
+      ${*$self}{exp_Pid} = undef;
       return $?;
     }
     sleep 1;
@@ -1341,17 +1358,19 @@ sub hard_close {
   # wait 5 more seconds for it to die.
   $end_time = time() + 5;
   while ($end_time > time()) {
-    $returned_pid = waitpid($self->pid(), &WNOHANG);
+    $returned_pid = waitpid(${*$self}{exp_Pid}, &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} killed, Status: $?\r\n";
       }
+      ${*$self}{exp_Pid} = undef;
       return $?;
     }
     sleep 1;
   }
   warn "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} is HUNG.\r\n";
+  ${*$self}{exp_Pid} = undef;
   return undef;
 }
 
@@ -1442,14 +1461,8 @@ sub _print_handles {
   # If ${*$self}{exp_Pty_Handle} is STDIN this would make it echo.
   print STDOUT $print_this
     if ${*$self}{"exp_Log_Stdout"};
-  if (${*$self}{exp_Log_File}) {
-    if (ref(${*$self}{exp_Log_File}) eq 'CODE') {
-      ${*$self}{exp_Log_File}->($print_this);
-    } else {
-      ${*$self}{exp_Log_File}->print($print_this)
-    }
-  }
-  $|= 1;			# This should not be necessary but autoflush() doesn't always work.
+  $self->print_log_file($print_this);
+  $|= 1; # This should not be necessary but autoflush() doesn't always work.
 }
 
 sub _get_mode {

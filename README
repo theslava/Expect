@@ -1,16 +1,11 @@
 
-Expect.pm v1.12
+Expect.pm v1.13
 ===============
 
-GREAT NEWS!  Expect should finally work under the cywin environment
-for Windows NT!  All you need is the latest version of IO::Tty (0.05),
-which has been severely enhanced and bugfixed.  Also, *BSD and HPUX
-should work now.  Please refer to the IO::Tty documentation.
-
-Expect requires IO::Tty and IO::Stty, also available from CPAN.
-It is highly recommended that you also upgrade to the latest IO::Tty.
-There is a Bundle::Expect available that installs everything for
-you.
+Expect requires IO::Tty and IO::Stty, also available from CPAN.  It is
+highly recommended that you also upgrade to the latest IO::Tty (v0.9).
+If you use the highly recommended CPAN module, there is a
+Bundle::Expect available that installs everything for you.
 
 If you prefer manual installation, the usual
 
@@ -19,35 +14,38 @@ If you prefer manual installation, the usual
   make test
   make install
 
-should work.  I finally started a simple testsuite for Expect, but
-it doesn't really test anything deeper right now.  The problem is to
-find some external program to use for generating reproducible output
-that is available across all platforms.  Luckily, we can always use perl
+should work.  I finally started a simple testsuite for Expect, but it
+doesn't really test anything deeper right now.  The problem is to find
+some external program to use for generating reproducible output that
+is available across all platforms.  Luckily, we can always use perl
 itself...  Contributions to the testsuite are of course welcome.
 
-It would probably be wise to read the docs on IO::Tty before doing a
-make install with it (or at least when there are problems).  Note that
-IO::Tty is very system-dependend.  I'm in the process to steal the
-pty-creation code from the Tcl version of Expect, which should be much
-more stable, but this may take a while (no free tuits at the moment).
+Note that IO::Tty is very system-dependend.  I have copied a lot from
+the pty-creation code in the Tcl version of Expect and hope that this
+fixes a lot of problems, e.g. with ssh and other programs that ask for
+passwords.
 
-The Expect for Perl module was inspired more by the functionality the
-Tcl tool provides than any previous Expect-like tool such as Comm.pl
-or chat2.pl.
+The Perl Expect module was inspired more by the functionality of
+Tcl/Expect than any previous Expect-like tool such as Comm.pl or
+chat2.pl.
 
-The Tcl version of expect is a creation of Don Libes (libes@nist.gov).
-The Tcl Expect home page is http://expect.nist.gov/.  Don has written
-an excellent in-depth tutorial of Tcl/Expect, which is _Exploring
-Expect_.  It is the O'reilly book with the monkey on the front.  Don has
-several references to other articles on the Expect web page.
+The Tcl version of Expect is a creation of Don Libes (libes@nist.gov)
+and can be found at http://expect.nist.gov/.  Don has written an
+excellent in-depth tutorial of Tcl/Expect, which is _Exploring
+Expect_.  It is the O'Reilly book with the monkey on the front.  Don
+has several references to other articles on the Expect web page.
 
-I try to stay as close to Tcl/Expect in interface and semantics
-as possible (so I can refer questions to the Tcl/Expect docu).
+I try to stay as close to Tcl/Expect in interface and semantics as
+possible (so I can refer questions to the Tcl/Expect docu).
 Suggestions for improvement are always welcome.
 
-There is now a FAQ section in the pod, complete with examples, so please
-let me know if there's something you'd like to see answered there that
-isn't.
+[Latest rumours have it that Don plans a rewrite of Expect as a
+stand-alone library that can be easily embedded into various scripting
+languages.]
+
+There is now a FAQ section in the pod, complete with examples, so
+please let me know if there's something you'd like to see answered
+there that isn't.
 
 There are two mailing lists available, expectperl-announce and
 expectperl-discuss, at
@@ -62,27 +60,28 @@ and
 From the Changes file:
 ======================
 
-! exp_Max_Accum didn't work for interact.
+! changed tests to check out pty behaviour (max. string length)
 
-- removed soft_close() from DESTROY.  Being overly nice to a doomed
-  process doesn't pay off.  Old behaviour is available via
-  $Expect::Do_Soft_Close = 1;
++ added various FAQ entries
 
-! cleanup of log and exp_internal output
++ added autoflush(1) to log_file
 
-+ added various aliases for functions starting with 'exp_'
++ split 'new' and 'spawn' to be able to set slave pty params via stty
+  before actually spawning the program
 
-! moved FAQ and intro into the main pod as I got the impression
-  that many users didn't bother to read all the documentation
-  or didn't know that it was there.
++ added slave_pty()
 
-+ added a hook for log_file: can be set to a code ref.
++ added print_log_file(), send() now no longer prints to log file or stdout.
 
++ added alarm to test.pl to avoid blocking on cygwin.
+
+! spawn() now uses IO::Pty spawn, thus exec errors are reported and
+  ssh should work too!
 
 Thanks to everybody who wrote to me, either with bug reports or
 enhancement suggestions!
 
-Roland Giersig (maintainer of Expect.pm, IO::Pty, IO::Stty, Tie::Persistent)
+Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2001-09-03
+2001-10-30

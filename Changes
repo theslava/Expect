@@ -170,3 +170,25 @@ Expect v1.12
   or didn't know that it was there.
 
 + added a hook for log_file: can be set to a code ref.
+
+
+Expect v1.13
+============
+
+! changed tests to check out pty behaviour (max. string length)
+
++ added various FAQ entries
+
++ added autoflush(1) to log_file
+
++ split 'new' and 'spawn' to be able to set slave pty params via stty
+  before actually spawning the program
+
++ added slave_pty()
+
++ added print_log_file(), send() now no longer prints to log file or stdout.
+
++ added alarm to test.pl to avoid blocking on cygwin.
+
+! spawn() now uses IO::Pty spawn, thus exec errors are reported and
+  ssh should work too!

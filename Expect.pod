@@ -4,47 +4,46 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.12
+1.13_01
 
 =head1 SYNOPSIS
-	
+
   use Expect;
-  
+
   # create an Expect object by spawning another process
-  my $exp = Expect->spawn($command, @params);
-  
+  my $exp = Expect->spawn($command, @params)
+    or die "Cannot spawn $command: $!\n";
+
   # or by using an already opened filehandle
   my $exp = Expect->exp_init(\*FILEHANDLE);
-  
+
   # if you prefer the OO mindset:
-  my $exp = new Expect ($command, @parameters);
-  
+  my $exp = new Expect;
+  $exp->slave_pty->stty("raw");  
+  $exp->spawn($command, @parameters)
+    or die "Cannot spawn $command: $!\n";
+
   # send some string there:
-  $exp->send("string\r");
-  
+  $exp->send("string\n");
+
   # or, for the filehandle mindset:
-  print $exp "string\r";
-  
+  print $exp "string\n";
+
   # then do some pattern matching with either the simple interface
-  $exp->expect($timeout, @match_patterns);
-  
-  # or multi-match on several spawned commands at once
-  expect($timeout, 
-         '-i' => $exp1, @match_patterns1,
-         '-i' => \@exp_list, @match_patterns234,
-  	);
-  
-  # even with callbacks, just like the Tcl version
+  $patidx = $exp->expect($timeout, @match_patterns);
+
+  # or multi-match on several spawned commands with callbacks,
+  # just like the Tcl version
   $exp->expect($timeout,
   	       [ qr/regex1/ => sub { my $exp = shift;
   				     $exp->send("response\n");
   				     exp_continue; } ],
   	       [ "regexp2" , \&callback, @cbparms ],
   	      );
-  
+
   # if no longer needed, do a soft_close to nicely shut down the command
   $exp->soft_close();
-  
+
   # or be less patient with
   $exp->hard_close();
 
@@ -60,7 +59,8 @@ The public functions that make up Expect.pm are:
   $object->clear_accum()
   $object->debug($debug_level)
   $object->exp_internal(0 | 1 | undef)
-  $object->exp_stty($stty_modes) # See the IO::Stty docs
+  $object->stty(@stty_modes) # See the IO::Stty docs
+  $object->slave_pty()
   $object->before();
   $object->match();
   $object->after();
@@ -93,7 +93,7 @@ There are several configurable package variables that affect the behavior of Exp
   $Expect::Multiline_Matching;
   $Expect::Do_Soft_Close;
 
-=head1	DESCRIPTION 
+=head1 DESCRIPTION 
 
 The Expect module is a successor of Comm.pl and a descendent of Chat.pl. It
 more closely ressembles the Tcl Expect language than its predecessors. It
@@ -106,13 +106,20 @@ decision processing more fluid.  Three separate types of debugging have
 been implemented to make code production easier.
 
 It is now possible to interconnect multiple file handles (and processes) much
-like Tcl's expect. An attempt was made to enable all the features of Tcl's
-expect without forcing Tcl on the victim programmer :-) .
+like Tcl's Expect. An attempt was made to enable all the features of Tcl's
+Expect without forcing Tcl on the victim programmer :-) .
 
 
 =head1 USAGE
 
 =over 4
+
+=item new Expect ()
+
+Creates a new Expect object, i.e. a pty.  You can change parameters on
+it before actually spawning a command.  This is important if you want
+to modify the terminal settings for the slave.  See slave_pty() below.
+
 
 =item Expect->exp_init(\*FILEHANDLE) I<or>
 
@@ -123,24 +130,28 @@ be passed a B<_reference_> to FILEHANDLE if you want it to work properly.
 IO::File objects are preferable. Returns a reference to the newly created
 object.
 
+
 =item Expect->spawn($command, @parameters) I<or>
 
 =item new Expect ($command, @parameters)
 
-Forks and execs $command. Returns a reference to the newly created process
-object. Returns undef if the fork was unsuccessful or the object could not be
-created. 
+Forks and execs $command. Returns an Expect object upon success or
+undef if the fork was unsuccessful or the command could not be found.
+spawn() passes its parameters unchanged to Perls exec(), so look there
+for detailed semantics.
 
-Note that spawn() passes its parameters unchanged to Perls exec(), so
-look there for semantics.
+Note that if spawn cannot exec() the given command, the Expect object
+is still valid and the next expect() will see "Cannot exec", so you
+can use that for error handling.
+
 
 =item $object->debug(0 | 1 | 2 | 3 | undef)
 
-Sets debug level for $object. 1 refers to general debugging information, 2
-refers to verbose debugging and 0 refers to no debugging. If you call
-debug() with no parameters it will return the current debugging level.
-When the object is created the debugging level will match that $Expect::Debug,
-normally 0.
+Sets debug level for $object. 1 refers to general debugging
+information, 2 refers to verbose debugging and 0 refers to no
+debugging. If you call debug() with no parameters it will return the
+current debugging level.  When the object is created the debugging
+level will match that $Expect::Debug, normally 0.
 
 The '3' setting is new with 1.05, and adds the additional
 functionality of having the _full_ accumulated buffer printed every
@@ -157,14 +168,40 @@ $Expect::Exp_Internal, normally 0. Returns the current setting if called
 without parameters. It is highly recommended that you make use of the
 debugging features lest you have angry code.
 
-=item $object->exp_stty($mode) I<or>
 
-=item $object->stty($mode)
+=item $object->stty(qw(mode1 mode2...))
 
-Sets the tty mode for $object's associated terminal to $mode. Typical
-values are 'sane', 'raw', and 'raw -echo'. This should be used in conjunction
-with manual_stty(). See the docs for IO::Stty to see what values make sense
-here.
+Sets the tty mode for $object's associated terminal to the given modes. Note
+that on many systems the master side of the pty is not a tty, so you
+have to modify the slave pty instead, see next item.
+
+
+=item $object->slave_pty()
+
+Returns a filehandle to the slave part of the pty.  Very useful in modifying
+the terminal settings:
+
+  # requires IO::Tty v0.06 or higher!!
+  $object->slave_pty->stty(qw(raw -echo));
+
+Typical values are 'sane', 'raw', and 'raw -echo'.  Note that I
+recommend setting the terminal to 'raw' or 'raw -echo', as this avoids
+a lot of hassle and gives pipe-like (i.e. transparent) behaviour
+(without the buffering issue).
+
+
+=item $object->print(@strings) I<or>
+
+=item $object->send(@strings)
+
+Sends the given strings to the spawned command.  Note that the strings
+are not logged in the logfile (see print_log_file) but will probably
+be echoed back by the pty, depending on pty settings (default is echo)
+and thus end up there anyway.  This must also be taken into account
+when expect()ing for an answer: the next string will be the command
+just sent.  I suggest setting the pty to raw, which disables echo and
+makes the pty transparently act like a bidirectional pipe.
+
 
 =item $object->expect($timeout, @match_patterns)
 
@@ -239,10 +276,10 @@ character.  telnet would return to you "\r\nEscape character is
   $telnet->expect(10,'-re',$match); 
 
 
-I<New more TCL-like interface (added by RGiersig@cpan.org):>
+I<New more Tcl/Expect-like interface:>
 
 It's now possible to expect on more than one connection at a time by
-specifying 'C<-i>' (see the TCL expect manpage) and a ref to an array
+specifying 'C<-i>' and a single Expect object or a ref to an array
 containing Expect objects, e.g.
 
  expect($timeout,
@@ -260,10 +297,10 @@ without resetting the timeout count.
 
  $exp->expect($timeout,
               [ qr/username: /i, sub { my $self = shift;
-                                       $self->send("$username\r");
+                                       $self->send("$username\n");
                                        exp_continue; }],
               [ qr/password: /i, sub { my $self = shift;
-                                       $self->send("$password\r");
+                                       $self->send("$password\n");
                                        exp_continue; }],
 	      $shell_prompt);
 
@@ -279,12 +316,14 @@ before() returns the 'before' part of the last expect() call. If the last
 expect() call didn't match anything, exp_before() will return the entire
 output of the object accumulated before the expect() call finished.
 
+
 =item $object->exp_after() I<or>
 
 =item $object->after()
- 
+
 returns the 'after' part of the last expect() call. If the last
 expect() call didn't match anything, exp_after() will return undef().
+
 
 =item $object->exp_match() I<or>
 
@@ -292,6 +331,7 @@ expect() call didn't match anything, exp_after() will return undef().
 
 returns the string matched by the last expect() call, undef if
 no string was matched.
+
 
 =item $object->exp_match_number() I<or>
 
@@ -301,6 +341,7 @@ exp_match_number() returns the number of the pattern matched by the last
 expect() call. Keep in mind that the first pattern in a list of patterns is 1,
 not 0. Returns undef if no pattern was matched.
 
+
 =item $object->exp_matchlist() I<or>
 
 =item $object->matchlist()
@@ -308,6 +349,7 @@ not 0. Returns undef if no pattern was matched.
 exp_matchlist() returns a list of matched substrings from the brackets
 () inside the regexp that last matched. ($object->matchlist)[0]
 thus corresponds to $1, ($object->matchlist)[1] to $2, etc.
+
 
 =item $object->exp_error() I<or>
 
@@ -326,6 +368,7 @@ any residual contents of a handle after expect() or send_slow() such
 that the next expect() call will only see new data from $object. The
 contents of the accumulator are returned.
 
+
 =item $object->exp_command() I<or>
 
 =item $object->command()
@@ -333,11 +376,13 @@ contents of the accumulator are returned.
 exp_command() returns the string that was used to spawn the command. Helpful
 for debugging and for reused patternmatch subroutines.
 
+
 =item $object->exp_exitstatus() I<or>
 
 =item $object->exitstatus()
 
 Returns the exit status of $object (if it already exited).
+
 
 =item $object->exp_pty_handle() I<or>
 
@@ -346,6 +391,7 @@ Returns the exit status of $object (if it already exited).
 Returns a string representation of the attached pty, for example:
 `spawn id(5)' (pty has fileno 5), `handle id(7)' (pty was initialized
 from fileno 7) or `STDIN'. Useful for debugging.
+
 
 =item $object->restart_timeout_upon_receive(0 | 1)
 
@@ -362,6 +408,7 @@ aliveness testing and still expect for patterns.
 Now the timeout isn't triggered if the command produces any kind of output,
 i.e. is still alive, but you can act upon patterns in the output.
 
+
 =item Expect::interconnect(@objects);
 
 Read from @objects and print to their @listen_groups until an escape sequence
@@ -376,16 +423,19 @@ group_ will be set to 'raw -echo' for the duration of interconnection.
 Setting $object->manual_stty() will stop this behavior per object.
 The original tty settings will be restored as interconnect exits.
 
+
 =item Expect::test_handles(@objects)
 
 Given a set of objects determines which objects' handles have data ready
 to be read. B<Returns an array> who's members are positions in @objects that
 have ready handles. Returns undef if there are no such handles ready.
 
+
 =item Expect::version($version_requested or undef);
 
 Returns current version of Expect. As of .99 earlier versions are not
 supported. Too many things were changed to make versioning possible.
+
 
 =item $object->interact( C<\*FILEHANDLE, $escape_sequence>)
 
@@ -396,6 +446,7 @@ is read from B<FILEHANDLE>, not $object. $object's listen group will
 consist solely of \*FILEHANDLE for the duration of the interaction.
 \*FILEHANDLE will not be echoed on STDOUT. 
 
+
 =item $object->log_group(0 | 1 | undef)
 
 Set/unset logging of $object to its 'listen group'. If set all objects
@@ -404,7 +455,10 @@ $object->expect(), $object->send_slow(), and C<Expect::interconnect($object
 , ...)>. Default value is on. During creation of $object the setting will
 match the value of $Expect::Log_Group, normally 1.
 
-=item $object->log_user(0 | 1 | undef)
+
+=item $object->log_user(0 | 1 | undef) I<or>
+
+=item $object->log_stdout(0 | 1 | undef)
 
 Set/unset logging of object's handle to STDOUT. This corresponds to Tcl's
 log_user variable. Returns current setting if called without parameters.
@@ -415,8 +469,9 @@ If/when you initialize STDIN it is usually associated with a tty which
 will by default echo to STDOUT anyway, so be careful or you will have
 multiple echoes.
 
+
 =item $object->log_file("filename" | $filehandle | \&coderef | undef)
-              
+
 Log session to a file.  All characters send to or received from the
 spawned process are written to the file.  Normally appends to the
 logfile, but you can pass an additional mode of "w" to truncate the
@@ -440,6 +495,14 @@ to the logfile:
   $object->log_file(\&myloggerfunc);
 
 
+=item $object->print_log_file(@strings)
+
+Prints to logfile (if opened) or calls the logfile hook function.
+This allows the user to add arbitraty text to the logfile.  Note that
+this could also be done as $object->log_file->print() but would only
+work for log files, not code hooks.
+
+
 =item $object->set_seq($sequence, \&function, \@function_parameters)
 
 During Expect->interconnect() if $sequence is read from $object &function
@@ -456,6 +519,7 @@ should return after your function returns.
 The special sequence 'EOF' matches the end of file being reached by $object.
 See interconnect() for details.
 
+
 =item $object->set_group(@listener_objects)
 
 @listener_objects is the list of objects that should have their handles 
@@ -463,12 +527,14 @@ printed to by $object when Expect::interconnect, $object->expect() or
 $object->send_slow() are called. Calling w/out parameters will return
 the current list of the listener objects.
 
+
 =item $object->manual_stty(0 | 1 | undef)
 
 Sets/unsets whether or not Expect should make reasonable guesses as to 
 when and how to set tty parameters for $object. Will match
 $Expect::Manual_Stty value (normally 0) when $object is created. If called
 without parameters manual_stty() will return the current manual_stty setting.
+
 
 =item $object->match_max($maximum_buffer_length | undef)
 
@@ -478,12 +544,14 @@ the buffer will be matched by every match_pattern it may get slow if the
 buffer gets too large. Returns current value if called without parameters.
 Not defined by default.
 
+
 =item $object->exp_pid() I<or>
 
 =item $object->pid()
 
 Return pid of $object, if one exists. Initialized filehandles will not have
 pids (of course).
+
 
 =item $object->send_slow($delay, @strings);
 
@@ -594,8 +662,7 @@ See L<IO::Tty> for a list of verified systems.
 
 =head2 Can I use this module with ActivePerl on Windows?
 
-Up to now, the answer was 'No', but this has changed (muchas gracias
-to Nick Scott <Nick.Scott@veritect.com>)!
+Up to now, the answer was 'No', but this has changed.
 
 You still cannot use ActivePerl, but if you use the Cygwin environment
 (http://sourceware.cygnus.com), which brings its own perl, and have
@@ -648,13 +715,45 @@ cleaner for communication between two programs (no more unexpected
 character translations).  Unfortunately this would break a lot of old
 code that sends "\r" to the program instead of "\n" (translating this
 is also handled by the pty), so I won't add this to Expect just like that.
-But feel free to experiment with C<$exp-E<gt>stty("raw")>.
+But feel free to experiment with C<$exp-E<gt>slave_pty-E<gt>stty("raw")>.
 
 
-=head2 My script works only from time to time without any obvious reason.  It seems that I am sometimes loosing output from the spawned program.
+=head2 My script fails from time to time without any obvious reason.  It seems that I am sometimes loosing output from the spawned program.
 
 Try to add a 'sleep 1' after you spawn() the program.  It could be that
 pty creation on your system is just slow.
+
+Alternatively, you could be exiting too fast without giving the
+spawned program enough time to finish.  Try adding $exp->soft_close()
+to terminate the program gracefully or expect() for 'eof'.
+
+
+=head2 I want to automate password entry for su/ssh/scp/rsh/...
+
+You shouldn't use Expect for this.  Putting passwords, especially 
+root passwords, into scripts in clear text can mean severe security 
+problems.  I strongly recommend using other means.  For 'su', consider 
+switching to 'sudo', which gives you root access on a per-command and 
+per-user basis without the need to enter passwords.  'ssh'/'scp' can be 
+set up with RSA authentication without passwords.  'rsh' can use 
+the .rhost mechanism, but I'd strongly suggest to switch to 'ssh'; to 
+mention 'rsh' and 'security' in the same sentence makes an oxymoron.  
+
+It will work for 'telnet', though, and there are valid uses for it,
+but you still might want to consider using 'ssh', as keeping cleartext
+passwords around is very insecure.
+
+
+=head2 I want to use Expect to automate [anything with a buzzword]...
+
+Are you sure there is no other, easier way?  As a rule of thumb,
+Expect is useful for automating things that expect to talk to a human,
+where no formal standard applies.  For other tasks that do follow a
+well-defined protocol, there are often better-suited modules that
+already can handle those protocols.  Don't try to do HTTP requests by
+spawning telnet to port 80, use LWP instead.  You don't use a
+screwdriver to hammer in your nails either, or do you?
+
 
 =head2 I want to log the whole session to a file.
 
@@ -672,7 +771,7 @@ or even
 
 for maximum flexibility.
 
-to start logging.  Note that the logfile is appended to by default, but you can
+Note that the logfile is appended to by default, but you can
 specify an optional mode "w" to truncate the logfile:
 
   $exp->log_file("filename", "w");
@@ -732,19 +831,24 @@ to work.  I don't know about security implications if you do this.
 
 =head2 I just want to read the output of a process without expect()ing anything. How can I do this?
 
+[ Are you sure you need Expect for this?  How about qx() or open("prog|")? ]
+
 By using expect without any patterns to match.
 
   $process->expect(undef); # Forever until EOF
   $process->expect($timeout); # For a few seconds
   $process->expect(0); # Is there anything ready on the handle now?
 
+
 =head2 Ok, so now how do I get what was read on the handle?
 
   $read = $process->before();
 
+
 =head2  Where's IO::Pty?
 
 Find it on CPAN as IO::Tty, which provides both.
+
 
 =head2 How come when I automate the passwd program to change passwords for me passwd dies before changing the password sometimes/every time?
 
@@ -764,6 +868,10 @@ itself before killing it.
 This will wait forever for the process to match an empty set of
 patterns. It will return when the process hits an EOF.
 
+As a rule, you should always expect() the result of your transaction
+before you continue with processing.
+
+
 =head2 How come when I try to make a logfile with log_file() or set_group() it doesn't print anything after the last time I run expect()?
 
 Output is only printed to the group when Expect reads from the
@@ -782,7 +890,7 @@ available in the accumulator, so you can grab it using
 $process->exp_before().
 
 
-=head2 How come Expect.pm doesn't run properly under HP-UX?
+=head2 How come Expect.pm doesn't run properly under old HP-UX?
 
 There seems to be a problem in IO::Tty. More to the point, HP-UX. When a
 process dies the parent end of it's tty does not receive an EOF, or so I have
@@ -803,27 +911,44 @@ are ready. This causes processes to receive premature
 EOFs. A workaround is to sleep() a few seconds between spawning processes.
 Be sure you soft_close() or hard_close() the process when you are finished.
 
-Also, try IO::Tty v0.05, which has several fixes and should work 
-much better on *BSD systems.
+Also, try IO::Tty v0.05 or newer, which has several fixes and should
+work much better on *BSD systems.
+
 
 =head2 I seem to have problems with terminal settings, double echoing, etc.
 
-Tty settings are a major pain to keep track of. If you find
-unexpected behavior such as double-echoing or a frozen session doublecheck
-the documentation for default settings. When in doubt handle them yourself
-using the exp_stty() and manual_stty() functions. As of .98 you shouldn't
-have to worry about stty settings getting fouled unless you use interconnect
-or intentionally change them (like doing -echo to get a password).
+Tty settings are a major pain to keep track of. If you find unexpected
+behavior such as double-echoing or a frozen session, doublecheck the
+documentation for default settings. When in doubt, handle them
+yourself using $exp->stty() and manual_stty() functions.  As of .98
+you shouldn't have to worry about stty settings getting fouled unless
+you use interconnect or intentionally change them (like doing -echo to
+get a password).
 
-If you foul your terminal's tty settings, kill any hung processes and enter 
-'stty sane' at a shell prompt. This should make your terminal manageable again.
+If you foul up your terminal's tty settings, kill any hung processes
+and enter 'stty sane' at a shell prompt. This should make your
+terminal manageable again.
 
-Note that IO::Tty returns ptys with your systems default setting regarding
-echoing, CRLF translation etc. and Expect does not change them.  I have 
-considered setting the ptys to raw without any translation whatsoever, but
-this would break a lot of existing things, as \r would not work anymore.
-On the other hand, a raw pty works much like a pipe and is more WYGIWYE
-(what you get is what you expect).
+Note that IO::Tty returns ptys with your systems default setting
+regarding echoing, CRLF translation etc. and Expect does not change
+them.  I have considered setting the ptys to 'raw' without any
+translation whatsoever, but this would break a lot of existing things,
+as '\r' translation would not work anymore.  On the other hand, a raw
+pty works much like a pipe and is more WYGIWYE (what you get is what
+you expect), so I suggest you set it to 'raw' by yourself:
+
+  $exp = new Expect;
+  $exp->slave_pty->stty(qw(raw));
+  $exp->spawn(...);
+
+To disable echo:
+
+  $exp->slave_pty->stty(qw(-echo));
+
+
+=head2 I noticed that the test uses a string that resembles, but not exactly matches, a well-known sentence that contains every character.  What does that mean?
+
+That means you are anal-retentive. :-)  [Gotcha there!]
 
 
 =head1 Source Examples
@@ -831,7 +956,8 @@ On the other hand, a raw pty works much like a pipe and is more WYGIWYE
 
 =head2 How to automate login
 
-  my $exp = Expect->spawn("telnet localhost");
+  my $exp = Expect->spawn("telnet localhost")
+    or die "Cannot spawn telnet: $!\n";;
   my $spawn_ok;
   $exp->expect($timeout,
 	       [
@@ -839,7 +965,7 @@ On the other hand, a raw pty works much like a pipe and is more WYGIWYE
 		sub {
                   $spawn_ok = 1;
 		  my $fh = shift;
-		  $fh->send("$username\r");
+		  $fh->send("$username\n");
                   exp_continue;
 		}
 	       ],
@@ -847,7 +973,7 @@ On the other hand, a raw pty works much like a pipe and is more WYGIWYE
 		'Password: $',
 		sub {
 		  my $fh = shift;
-		  print $fh "$password\r";
+		  print $fh "$password\n";
                   exp_continue;
 		}
 	       ],
@@ -883,7 +1009,7 @@ On the other hand, a raw pty works much like a pipe and is more WYGIWYE
 	  qr"pattern",		# find this pattern in output of all commands
 	  sub {
 	    my $obj = shift;	# object that matched
-	    print $obj "something\r";
+	    print $obj "something\n";
 	    exp_continue;	# we don't want to terminate the expect call
 	  }
 	 ],
