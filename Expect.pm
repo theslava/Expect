@@ -25,7 +25,7 @@ use Fcntl; # For checking file handle settings.
 @Expect::ISA= qw(IO::Pty);
 
 BEGIN {
-  $Expect::VERSION="1.04";
+  $Expect::VERSION="1.07";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
 # This will be unset, since the default behavior differs between 
@@ -182,6 +182,7 @@ sub set_group {
     if (defined (${*$self}{exp_Listen_Group})) {
       return @{${*$self}{exp_Listen_Group}};
     } else {
+      # Refrain from returning an undef
       return undef;
     }
   }
@@ -272,7 +273,7 @@ sub expect {
   }
   @patterns = @temp_patterns;
 
-  print STDERR "Beginning expect from ${*$self}{exp_Pty_Handle}.\r\nAccumulator: '"._trim_length(_make_readable((${*$self}{exp_Accum})))."'\r\n" if ${*$self}{"exp_Debug"};
+  print STDERR "Beginning expect from ${*$self}{exp_Pty_Handle}.\r\nAccumulator: '".$self->_trim_length(_make_readable((${*$self}{exp_Accum})))."'\r\n" if ${*$self}{"exp_Debug"};
 
 
   print STDERR "Expect timeout time: ".(defined($loop_time) ? $loop_time : "unlimited" )." seconds.\r\n" if ${*$self}{"exp_Debug"};
@@ -302,7 +303,7 @@ READLOOP:
     # Test for a match first so we can test the current Accum w/out worrying
     # about an EOF.
     if (defined(${*$self}{"exp_Max_Accum"})) {
-      ${*$self}{exp_Accum}=_trim_length(${*$self}{exp_Accum},${*$self}{"exp_Max_Accum"});
+      ${*$self}{exp_Accum}=$self->_trim_length(${*$self}{exp_Accum},${*$self}{"exp_Max_Accum"});
     }
     $pattern_number = 1;
     # Does the user want to watch the patterns?
@@ -312,7 +313,7 @@ READLOOP:
 # smaller amounts if the total is huge should be ok.
 # Thus the 'trim_length'
       print STDERR "Does '";
-      print STDERR _trim_length(_make_readable(${*$self}{exp_Accum}));
+      print STDERR $self->_trim_length(_make_readable(${*$self}{exp_Accum}));
       print STDERR "'\r\nfrom ${*$self}{exp_Pty_Handle} match:\r\n";
     }
     for $pattern ( @patterns ) {
@@ -331,16 +332,25 @@ READLOOP:
             length($pattern));
           $after = substr(${*$self}{exp_Accum},
             $no_regexp_match_index + length($pattern)) ;
+          ${*$self}{exp_Before} = $before;
+          ${*$self}{exp_Match} = $match;
+          ${*$self}{exp_After} = $after;
           $successful_pattern=$pattern_number;
         }
       } elsif ( ($Expect::Multiline_Matching) && 
       (${*$self}{exp_Accum} =~ /$pattern/m )) {
         # Matching regexp
         ( $match, $before, $after ) = ( $&, $`, $' );
+        ${*$self}{exp_Before} = $before;
+        ${*$self}{exp_Match} = $match;
+        ${*$self}{exp_After} = $after;
         $successful_pattern=$pattern_number;
       } elsif (${*$self}{exp_Accum} =~ /$pattern/ ) {
         # Matching regexp
         ( $match, $before, $after ) = ( $&, $`, $' );
+        ${*$self}{exp_Before} = $before;
+        ${*$self}{exp_Match} = $match;
+        ${*$self}{exp_After} = $after;
         $successful_pattern=$pattern_number;
       }
       if ($successful_pattern) {
@@ -353,10 +363,10 @@ READLOOP:
           print STDERR '-re ' if $regexp_flags[$successful_pattern - 1];
           print STDERR "\'$pattern\')!\r\n";
           print STDERR "\tBefore match string: '";
-          print STDERR _trim_length(_make_readable(($`)))."'\r\n";
-          print STDERR "\tMatch string: '"._make_readable($&)."'\r\n";
+          print STDERR $self->_trim_length(_make_readable(($before)))."'\r\n";
+          print STDERR "\tMatch string: '"._make_readable($match)."'\r\n";
           print STDERR "\tAfter match string: '";
-          print STDERR _trim_length(_make_readable(($')))."'\r\n";
+          print STDERR $self->_trim_length(_make_readable(($after)))."'\r\n";
         }
         last READLOOP;
       }
@@ -378,6 +388,7 @@ READLOOP:
     $nread = 0 unless defined ($nread);
     unless ($nread) {
       $before = $self->clear_accum();
+      ${*$self}{exp_Before} = $before;
       $err = "2:EOF";
       last READLOOP;
     }
@@ -400,11 +411,13 @@ READLOOP:
   # No pattern, no EOF. Did we time out or is the process dead?
   if ((!$successful_pattern) && (!$err)) {
     $before = ${*$self}{exp_Accum};
+    ${*$self}{exp_Before} = $before;
     # is it dead?
     if (defined(${*$self}{exp_Pid})) {
       waitpid(${*$self}{exp_Pid},WNOHANG);
       if ( !kill( 0, ${*$self}{exp_Pid} ) ) {
         $before = $self->clear_accum(); # Don't bother saving Accum. It's dead.
+        ${*$self}{exp_Before} = $before;
         $err = "3:Child process ${*$self}{exp_Pid} died before matching";
       }
     }
@@ -420,24 +433,47 @@ READLOOP:
     if (${*$self}{"exp_Debug"}) {
         print STDERR "Accumulator: '";
       if ($err) {
-        print STDERR _trim_length(_make_readable($before))."'\r\n";
+        print STDERR $self->_trim_length(_make_readable($before))."'\r\n";
       } else {
-        print STDERR _trim_length(_make_readable(${*$self}{exp_Accum}))."'\r\n";
+        print STDERR $self->_trim_length(_make_readable(${*$self}{exp_Accum}))."'\r\n";
       }
     }
   }
 
   $successful_pattern = undef if $err; # Sanity check
-  # If the index in to the pattern array is 0 we want expect to return
-  # The index number but also true for comparisons.
-  if (defined($successful_pattern) && ($successful_pattern == 0)) {
-    $successful_pattern = "0 but true";
-  }
+
+  # Save for later
+  ${*$self}{exp_Match_Number} = $successful_pattern;
+  ${*$self}{exp_Error} = $err;
   if ( wantarray ) {
     return ( $successful_pattern, $err, $match, $before, $after );
   }
   return $successful_pattern;
 }
+
+# This is new in 1.06. This makes it possible to see the results of the last
+# expect()
+sub exp_match_number {
+  my($self) = shift;
+  return ${*$self}{exp_Match_Number};
+}
+sub exp_error {
+  my($self) = shift;
+  return ${*$self}{exp_Error};
+}
+sub exp_before {
+  my($self) = shift;
+  return ${*$self}{exp_Before};
+}
+sub exp_match {
+  my($self) = shift;
+  return ${*$self}{exp_Match};
+}
+sub exp_after {
+  my($self) = shift;
+  return ${*$self}{exp_After};
+}
+
 
 # $process->interact([$in_handle],[$escape sequence])
 # If you don't specify in_handle STDIN  will be used.
@@ -493,6 +529,14 @@ sub interact {
   Expect::interconnect($self,$in_object);
   $self->log_stdout($old_log_stdout_val);
   $self->set_group(@old_group);
+# If old_group was undef, make sure that occurs. This is a slight hack since
+# it modifies the value directly.
+# Normally an undef passed to set_group will return the current groups.
+# It is possible that it may be of worth to make it possible to undef
+# The current group without doing this.
+  unless (defined (@old_group)) {
+    @{${*$self}{exp_Listen_Group}} = ();
+  }
   $self->manual_stty($old_manual_stty_val);
   return $return_value;
 }
@@ -597,8 +641,8 @@ CONNECT_LOOP:
               print STDERR "\r\ninterconnect got escape sequence from ${*$read_handle}{exp_Pty_Handle}.\r\n";
               # I'm going to make the esc. seq. pretty because it will 
               # probably contain unprintable characters.
-              print STDERR "\tEscape Sequence: '"._trim_length(_make_readable($escape_sequence))."'\r\n";
-              print STDERR "\tMatched by string: '"._trim_length(_make_readable($&))."'\r\n";
+              print STDERR "\tEscape Sequence: '"._trim_length(undef,_make_readable($escape_sequence))."'\r\n";
+              print STDERR "\tMatched by string: '"._trim_length(undef,_make_readable($&))."'\r\n";
             }
             # Print out stuff before the escape.
             # Keep in mind that the sequence may have been split up
@@ -678,9 +722,9 @@ sub send_slow{
           # Is this necessary to keep? Probably.. #
           # if you need to expect it later.
           ${*$self}{exp_Accum}.=${*$self}{exp_Pty_Buffer};
-          ${*$self}{exp_Accum}=_trim_length(${*$self}{exp_Accum},${*$self}{"exp_Max_Accum"}) if defined (${*$self}{"exp_Max_Accum"});
+          ${*$self}{exp_Accum}=$self->_trim_length(${*$self}{exp_Accum},${*$self}{"exp_Max_Accum"}) if defined (${*$self}{"exp_Max_Accum"});
           $self->_print_handles(${*$self}{exp_Pty_Buffer});
-          print STDERR "Received \'"._trim_length(_make_readable($char))."\' from ${*$self}{exp_Pty_Handle}\r\n" if ${*$self}{"exp_Debug"}>1;
+          print STDERR "Received \'".$self->_trim_length(_make_readable($char))."\' from ${*$self}{exp_Pty_Handle}\r\n" if ${*$self}{"exp_Debug"}>1;
         }
       }
     }
@@ -889,8 +933,14 @@ sub _trim_length {
   # Also used if Max_Accum gets set to limit the size of the accumulator
   # for matching functions. 
   # exp_internal
+  my($self)=shift;
   my($string)=shift;
   my($length)=shift;
+
+# If we're not passed a length (_trim_length is being used for debugging 
+# purposes) AND debug >= 3, don't trim.
+  return($string) if (defined ($self) && 
+      ${*$self}{"exp_Debug"} >=3 && (!(defined($length))));
   my($indicate_truncation)='...' unless $length;
   $length = 1021 unless $length;
   return($string) unless $length < length($string);
@@ -910,12 +960,13 @@ sub _print_handles {
     foreach $handle(@{${*$self}{exp_Listen_Group}}) {
       $print_this='' unless defined ($print_this);
       # Appease perl -w
-      print STDERR "Printed '"._trim_length(_make_readable($print_this))."' to ${*$handle}{exp_Pty_Handle} from ${*$self}{exp_Pty_Handle}.\r\n" if (${*$handle}{"exp_Debug"}>1);
+      print STDERR "Printed '".$self->_trim_length(_make_readable($print_this))."' to ${*$handle}{exp_Pty_Handle} from ${*$self}{exp_Pty_Handle}.\r\n" if (${*$handle}{"exp_Debug"}>1);
       print $handle $print_this;
     }
   }
   # If ${*$self}{exp_Pty_Handle} is STDIN this would make it echo.
   print $print_this if ${*$self}{"exp_Log_Stdout"};
+  $|=1; # This should not be necessary but autoflush() doesn't always work.
 }
 
 sub _get_mode {

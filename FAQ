@@ -1,13 +1,17 @@
 
 	Here's a couple answers to questions I've gotten recently.
 
-Q: I just want to read the output of a program without expect()ing
+Q: I just want to read the output of a process without expect()ing
 anything. How can I do this?
 
 A: By using expect without any patterns to match.
 	$process->expect(undef); # Forever until EOF
 	$process->expect($timeout); # For a few seconds
 	$process->expect(0); # Is there anything ready on the handle now?
+
+Q: Ok, so now how do I get what was read on the handle?
+
+A:	$read = $process->exp_before();
 
 Q: Where's IO::Pty/Tty?
 
@@ -46,16 +50,16 @@ proces, during expect(), send_slow() and interconnect().
 	which will make expect() run with an empty pattern set forever
 or just for an instant to capture the output of $process. The output
 is available in the accumulator, so you can grab it using
-$process->clear_accum() or catching the 'before match' part of the 
-return of expect(). See the docs on expect() for more info.
+$process->exp_before().
 
 
 Q: How come I can't match regular expressions any more? How come expect()
 isn't working right in this version?
 
 A:	The internals of expect() have been significantly cleaned up and
-a couple of features have been added since the last public (1.01)
-release. Two cool (my opinion of course) things have changed.
+a couple of features have been added since the 1.01 release. Two cool
+(my opinion of course) things have changed that break the old method of
+doing this.
 
 	'-re' must be passed to expect directly before a string you want
 to match as a regular expression. This obsoletes use of the 
@@ -81,4 +85,27 @@ buffer.
 	One of the caveats here is that because input is read in chunks
 it is possible for $ to match a string that may not necessarily be what you
 want.
+
+
+Q:	How come Expect.pm doesn't run properly under HP-UX?
+
+A:	There seems to be a bug in IO::Tty. More to the point, HP-UX. When a
+process dies the parent end of it's tty does not receive an EOF, or so I have
+been told. I do not have a machine to test this on.
+	One solution is when you spawn a process, follow it with a unique
+string that would indicate the process is finished.
+
+        $process = Expect->spawn('telnet somehost;echo ____END____');
+
+	And then $process->expect($timeout,'____END____','other','patterns');
+
+	If someone has an HP they wouldn't mind lending or lending an account
+on I'd be happy to see if I can't find some other solutuion...
+
+Q:	How come occasionally my script will stop functioning under xBSD?
+
+A:	I've only tried FreeBSD. What appears to happen is that ptys are
+getting reused before they are ready. This causes process to receive premature
+EOFs. A workaround is to sleep() a few seconds between process. Be sure you
+soft_close() or hard_close() the process when you are finished.
 

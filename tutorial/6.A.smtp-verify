@@ -1,17 +1,23 @@
-
-	Here's something that is of actual use, and should be relatively
-portable.
-	Given an email address and a mail server name check to see if
-the address is deliverable on that box. This can be used for address
-verification or spam relay checking.
-
-	The point of this is to show how you can take a generic handle
-and interact with it. In this example a socket is used.
-
 #!/usr/bin/perl -w
+#	Here's something that is of actual use, and should be relatively
+#portable.
+#	Given an email address and a mail server name check to see if
+#the address is deliverable on that box. This can be used for address
+#verification or spam relay checking.
+#
+#	The point of this is to show how you can take a generic handle
+#and interact with it. In this example a socket is used.
+
 
 use Expect;
 use IO::Socket;
+
+# $Expect::Debug=1
+# $Expect::Exp_Internal=1;
+# $Expect::Log_Stdout=0; # On by default. This does not affect Expect
+# objects created with Expect->exp_init() however. By default the output of
+# those handles will not be output to the screen. use $handle->log_stdout(1)
+# to turn that on after you initialize the handle.
 
 # Arg. 0 hostname of mail server
 $mail_server=shift(@ARGV);

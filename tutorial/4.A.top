@@ -1,12 +1,14 @@
-
-	This example is a replay of sorts of the rlogin example
-before except in this example we turn control of the process back
-to the user through use of interact().
-
-	
 #!/usr/local/bin/perl
+#	This example is a replay of sorts of the rlogin example
+#before except in this example we turn control of the process back
+#to the user through use of interact().
 
-$RSH='/usr//bin/ssh';
+use Expect;
+	
+# $Expect::Debug=2;
+ $Expect::Exp_Internal=1;
+
+$RSH='/usr/local/bin/ssh';
 
 $host_to_login_to=shift(@ARGV);
 
@@ -16,9 +18,7 @@ print "Enter password: ";
 $password=<STDIN>;
 chomp $password;
 
-use Expect;
 
-$Expect::Exp_Internal=1;
 
 $rsh=Expect->spawn($RSH,$host_to_login_to);
 

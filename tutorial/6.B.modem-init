@@ -1,13 +1,11 @@
-
-	This is a very brief script that demonstrates send_slow(). This
-command is chiefly for talking to modems and the like where if you send
-it stuff too fast it can get mad at you.
-	Also demonstrated is how to talk to a bidirectional device
-handle.
-	I must confess to not trying this since I don't have a machine
-where the modem isn't currently in use, but it *looks* good.
-
 #!/usr/bin/perl
+#	This is a very brief script that demonstrates send_slow(). This
+#command is chiefly for talking to modems and the like where if you send
+#it stuff too fast it can get mad at you.
+#	Also demonstrated is how to talk to a bidirectional device
+#handle.
+#
+#	This example has been changed in 1.05 so that it actually works. :-)
 
 use Expect;
 
@@ -23,11 +21,16 @@ $modem=Expect->exp_init(\*DEVICE);
 # watched since it was an initialized handlde and not a process.
 $modem->log_stdout(1);
 
+# Put it in raw mode w/ no echoing so it will operate as expected.
+$modem->exp_stty('raw','-echo');
+
 # Send it an ATZH0\r to reset its state.
+print "Initializing modem\n";
 $modem->send_slow(.5,"ATZH0\r");
 
 # How about we look for an OK?
 $modem->expect(30,'-re','^OK\r?$')|| warn "Never got OK from modem\n";
+print "Modem initialized.\n";
 
 # Now let's interact with it so the user can talk to it, dial it out,
 # whatever. This is basically a poor man's term program.
@@ -36,6 +39,7 @@ $modem->expect(30,'-re','^OK\r?$')|| warn "Never got OK from modem\n";
 # This is usually what you want. Here however it's nice to be able to
 # escape from the session without doing any extra work. So let's make
 # an escape character of ^W.
+print "Beginning interaction, escape character is ^W.\n";
 $modem->interact(\*STDIN,"\027");
 
 # Done? Reset the modem, close the handle.

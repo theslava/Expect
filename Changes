@@ -76,3 +76,11 @@ Unfortunately due to limitations in perl matching $ as the end of a line
 doesn't work if you are being returned \r\n instead of just \n. In this case
 you can use \r?$ to match the end of a line.
 	exp_stty now checks to make sure the FH is a tty.
+ver 1.05 -
+	Added debug level '3'. Fixed/added to tutorial, fixed a couple of
+minor bugs.
+ver 1.06 -
+	Added exp_before(), exp_after(), exp_match(), exp_match_number(),
+exp_error().
+ver 1.07 -
+	Changed the ver by .01 so I could get it up on CPAN :P

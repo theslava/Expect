@@ -1,21 +1,15 @@
-
-	Here we set manual_stty on the process so we can do things like
-hit ^Z to stop it instead of the ^Z going to the process on the other machine.
-	This is to say, normally when you interact with a process STDIN is
-put in raw mode so everything you type talks to the process at the other end.
-	Picture this. When you telnet somewhere and start a process (top
-for example) you are talking to telnet in raw mode. If you press ^Z it
-goes through telnet to the shell on the remote machine and the process
-at the other end is stopped. Here we're going to make it so raw mode is
-never set and when you press ^Z or ^C it will stop/interrupt Expect.
-	Also briefly demonstrated is the use of Expect::interconnect(),
-a more general/versatile alternative to interact.
-	
 #!/usr/local/bin/perl
-
-$RSH='/usr/bin/ssh';
-
-$host_to_login_to=shift(@ARGV);
+#	Here we set manual_stty on the process so we can do things like
+#hit ^Z to stop it instead of the ^Z going to the process on the other machine.
+#	This is to say, normally when you interact with a process STDIN is
+#put in raw mode so everything you type talks to the process at the other end.
+#	Picture this. When you telnet somewhere and start a process (top
+#for example) you are talking to telnet in raw mode. If you press ^Z it
+#goes through telnet to the shell on the remote machine and the process
+#at the other end is stopped. Here we're going to make it so raw mode is
+#never set and when you press ^Z or ^C it will stop/interrupt Expect.
+#	Also briefly demonstrated is the use of Expect::interconnect(),
+#a more general/versatile alternative to interact.
 
 use Expect;
 
@@ -23,6 +17,12 @@ use Expect;
 # $Expect::Log_Stdout=1;
 # $Expect::Exp_Internal=1;
 # $Expect::Debug=1;
+
+$RSH='/usr/bin/ssh';
+
+$host_to_login_to=shift(@ARGV);
+
+
 
 print "Enter password: ";
 $|=1;

@@ -1,6 +1,6 @@
 =head1 NAME
 
-Expect.pm (1.04) - Perl Expect interface
+Expect.pm (1.07) - Perl Expect interface
 
 =head1 SYNOPSIS
 
@@ -39,7 +39,7 @@ is that there is no POSIX for Microsoft stuff. Bummer.
 5.003 under Linux and SunOS 5 and worked fine, but with the new IO::Pty
 support 5.00401 is required. Expect itself doesn't require this in case
 at some point IO::Pty should become backwards compatible with earlier versions
-of Perl.
+of Perl. Please read the FAQ if you have trouble before going any further.
 
 The old perl 4 Comm.pl was only compatible with SunOS 4 and 5 due to 
 heavy use of ioctl() calls. It is the author's wish that this lack of
