@@ -1,0 +1,3 @@
+ This script is basically a demonstration of the interact() function. Most
+sane people use ncftp where available. Given an ftp host on the command line
+start an anonymous ftp session on the host in its /pub directory.

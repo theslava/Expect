@@ -1,0 +1,45 @@
+	For those of us unfamiliar with the pod format, an easy way to
+read this documentation is to run perldoc *.pod
+
+	To install Expect you will also need IO::Stty which will be in the same
+directory as you found this package, currently at ftp://ftp.habit.com/pub/perl.
+You will also need IO::Tty which can be found in Graham Barr's directory on any
+CPAN site. Please look over the examples and send me any possible script
+requests you might have if you can't make heads or tails of the examples. I'm
+afraid I'm not the world's greatest technical writer.
+	The examples given are somewhat specific to my particular machine. They
+are intended only as showing how scripts might be written.
+
+	One thing not mentioned is how to create log files without all the
+terminal crap (escape chars n such). Two ways to do this. First, you can use
+the term-filter.pl script, by piping to it or by running term-filter.pl >
+logfile. The second way is to spawn cat. This makes it so cat reads from a 
+terminal and strips the characters out. This would look like
+$logfile=Expect->spawn('cat > logfile');
+	One other thing not mentioned, and it's a big pitfall: when you
+use STDOUT for anything, interconnection or whatever, set manual_stty on it.
+Because it uses the same tty as STDIN you can often accidentally set your
+terminal settings to raw without meaning to. interact() takes care of this for
+you, so use interact where feasible.
+
+	None of the scripts make use of $object->use_regexps(0) for matching
+literal strings. You will probably have instances when you want something 
+like 'Why?' to match 'Why?' and not 'Wh'. Or you have a bunch of characters
+that would normally have to get backslashed.
+	I plan on adding more useful examples in the next version. I'd
+appreciate it very much if users with useful scripts wouldn't mind having them
+added to the examples list. One thing that is basically untouched is the
+use of the Expect::test_handles() function. It should be feasible to
+write a server of sorts that tests multiple child processes using 
+expect(0,@patterns) and test_handles(@objects) and perform interactive
+decisions accordingly. One possible use would be a diagnostic server that has
+multiple children checking the statuses of various hosts and returning alarms
+upon detecting errors. I may just write such a script if no one beats me to
+it :-).
+
+	Thanks,
+
+	Austin (Tex) Schutz
+
+	tex@habit.com
+Updated 12-04-97

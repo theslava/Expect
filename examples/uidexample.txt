@@ -1,0 +1,4 @@
+This script contacts hosts listed on the command line and checks to
+see whether or not the uid for the user is consistent with the local host.
+It demonstrates a few key concepts, such as stty echo management when
+trying to grab a password and decision making based upon an expect() result.
