@@ -11,6 +11,7 @@ WriteMakefile(
                                   'IO::Tty' => 0.97,
                                   'IO::Pty' => 0.97,
 				},
+	      'clean'        => { 'FILES' => '*.log' },
 	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
 	      );
 

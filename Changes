@@ -221,3 +221,7 @@ Expect v1.13_07
   should be propagated
 
 
+Expect v1.13_08
+===============
+
+! fixed bug in log_file, parameter now gets set to undef.

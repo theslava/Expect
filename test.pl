@@ -164,6 +164,7 @@ print "\nTesting raw reversing...\n\n";
 		);
   }
   ok($called >= @Strings);
+  $exp->log_file(undef);
 
   print <<_EOT_;
 
@@ -199,15 +200,16 @@ _EOT_
     }
     $exp->expect(10,
 		 [ quotemeta($rev) => sub {$maxlen = $len; }],
-		 [ timeout => sub { ok($maxlen > 80);
+		 [ timeout => sub { ok($maxlen > 160);
 				    print "Warning: your raw pty can only handle $maxlen bytes at a time!\n" ;
 				    $exitloop = 1; } ],
 		 [ eof => sub { ok(0); die "EOF"; } ],
 		);
     last if $exitloop;
   }
+  $exp->log_file(undef);
   print "Good, your raw pty can handle at least ".length($randstring)." bytes at a time.\n" if not $exitloop;
-  ok($maxlen > 80);
+  ok($maxlen > 160);
 }
 
 # Now test for the max. line length. Some systems are limited to ~255
@@ -254,10 +256,12 @@ _EOT_
   my $exp = new Expect($Perl . q{ -MIO::Handle -e 'open(TTY, "+>/dev/tty") or die "no controlling terminal"; autoflush TTY 1; print TTY "prompt: "; $s = <TTY>; chomp $s; print "uc: \U$s\n"; close TTY; exit 0;'});
 
   my $pwd = "pAsswOrd";
+  $exp->log_file("test_dev_tty.log");
   $exp->expect(10,
 	       [ qr/^prompt:/, sub {
 		   my $self = shift;
 		   $self->send("$pwd\n");
+		   $exp->log_file(undef);
 		   exp_continue;
 		 } ],
 	       [ qr/^uc:\s*(\w+)/, sub {

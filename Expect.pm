@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_07";
+  $Expect::VERSION = "1.13_08";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -334,6 +334,7 @@ sub log_file {
 
     if (${*$self}{exp_Log_File} and ref(${*$self}{exp_Log_File}) ne 'CODE') {
       close(${*$self}{exp_Log_File});
+      ${*$self}{exp_Log_File} = undef;
     }
     return if (not $file);
     my $fh = $file;
