@@ -1,5 +1,5 @@
 
-	Expect.pm v1.09
+	Expect.pm v1.10
 
 Expect requires IO::Tty and IO::Stty, also available from CPAN.
 There is a Bundle::Expect available that installs everything for

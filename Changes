@@ -93,3 +93,8 @@ ver 1.09 -
 the expect call didn't return on matching EOF, spawn didn't die when
 exec failed, Expect crashed in certain cases.
 
+v1.10
+	I cannot believe it: a syntax error in Expect.pm slipped through 
+(probably when I changed the version number after testing the patches),
+forcing me to do anouther release. >:-(
+

@@ -33,7 +33,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.09";
+  $Expect::VERSION = "1.10";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -690,7 +690,7 @@ sub _multi_expect($$@) {
 		  ($ret == exp_continue
 		   or $ret eq 'exp_continue'
 		   or $ret eq 'exp_continue_timeout'
-		   or $ret == exp_continue_timeout) {
+		   or $ret == exp_continue_timeout)) {
 		    $exp_cont = $ret;
 	      }
 	    }
