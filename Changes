@@ -84,3 +84,6 @@ ver 1.06 -
 exp_error().
 ver 1.07 -
 	Changed the ver by .01 so I could get it up on CPAN :P
+
+ver 1.08 -
+	Added multi-match functionality (see docu)  --Roland

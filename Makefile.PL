@@ -1,12 +1,13 @@
 use ExtUtils::MakeMaker;
-
-use Config;
-
-print "Be sure to read the file 'Changes' if you are upgrading from 1.01.\n";
-print "Behavior of pattern matching in expect() has changed significantly.\n";
-print "You might also want to check out soft_close() and hard_close().\n";
+# See lib/ExtUtils/MakeMaker.pm for details of how to influence
+# the contents of the Makefile that is written.
 
 WriteMakefile(
-    'NAME'	    => 'Expect',
-    'VERSION_FROM'  => "Expect.pm",
-);
+	      'NAME'	     => 'Expect',
+	      'VERSION_FROM' => 'Expect.pm',
+	      'PREREQ_PM'    => { 'IO::Stty' => '0.02',
+                                  'IO::Tty' => '0.02',
+                                  'IO::Pty' => '0.01',
+				},
+	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
+	      );

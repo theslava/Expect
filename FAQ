@@ -109,3 +109,4 @@ getting reused before they are ready. This causes process to receive premature
 EOFs. A workaround is to sleep() a few seconds between process. Be sure you
 soft_close() or hard_close() the process when you are finished.
 
+Austin Schutz <tex@habit.com>

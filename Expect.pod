@@ -24,8 +24,12 @@ The (current) public functions that make up Expect.pm are:
 	$object->exp_before();
 	$object->exp_match();
         $object->exp_after();
-        $object->exp_error();
+	$object->exp_matchlist();
         $object->exp_match_number();
+        $object->exp_error();
+        $object->exp_command();
+        $object->exp_exitstatus();
+        $object->exp_pty_handle();
 	$object->interact($other_object, $escape_sequence)
 	$object->log_group(0, 1, or undef)
 	$object->log_stdout(0, 1, or undef)
@@ -103,11 +107,12 @@ refers to verbose debugging and 0 refers to no debugging. If you call
 debug() with no parameters it will return the current debugging level.
 When the object is created the debugging level will match that $Expect::Debug,
 normally 0.
-	The '3' setting is new with 1.05, and adds the additional
-functionality of having the _full_ accumulated buffer printed every time data
-is read from an Expect object. This was implemented by request. I recommend
-against using this unless you think you need it as it can create quite a
-quantity of output under some circumstances..
+
+The '3' setting is new with 1.05, and adds the additional
+functionality of having the _full_ accumulated buffer printed every
+time data is read from an Expect object. This was implemented by
+request. I recommend against using this unless you think you need it
+as it can create quite a quantity of output under some circumstances..
 
 	$object->exp_internal(0, 1 or undef)
 
@@ -126,46 +131,95 @@ with manual_stty(). See the docs for IO::Stty to see what values make sense
 here.
 
 	$object->expect($timeout, @match_patterns)
+    or
+	expect($timeout, 
+	       '-i', [ $obj1, $obj2, ... ], 
+	             [ $re_pattern, sub { ...; exp_continue; }, @subparms, ],
+	             [ 'eof', sub { ... } ],
+	             [ 'timeout', sub { ... }, \$subparm1 ],
+	       '-i', [ $objn, ...],
+	             '-ex', $exact_pattern, sub { ... },
+	             $exact_pattern, sub { ...; exp_continue_timeout; },
+	             '-re', $re_pattern, sub { ... },
+	       '-i', \@object_list, @pattern_list,
+	       ...);
+
+I<Simple interface:>
 
 Given $timeout in seconds Expect will wait for $object's handle to produce
 one of the match_patterns. Due to o/s limitations $timeout should be a round
 number. If $timeout is 0 Expect will check one time to see if $object's 
 handle contains any of the match_patterns. If $timeout is undef Expect
-will wait forever for a pattern to match. If called in a scalar context
-expect() will return the position of the matched pattern within $match_patterns,
-or undef if no pattern was matched. This is a position starting from 1, so
-if you want to know which of an array of @matched_patterns matched you
-should subtract one from the return value.
-If called in an array context expect() will return ($matched_pattern_position,
-$error, $successfully_matching_string, $before_match, and $after_match).
-$matched_pattern_position will contain the value that would have been returned
-if expect() had been called in a scalar context. $error is the error that
-occurred that caused expect() to return. $error will contain a number followed
-by a string equivalent expressing the nature of the error. Possible values are
-undef, indicating no error, '1:TIMEOUT' indicating that $timeout seconds
-had elapsed without a match, '2:EOF' indicating an eof was read from $object,
-'3: spawn id($fileno) died' indicating that the process exited before
-matching and '4:$!' indicating whatever error was set in $ERRNO during the
-last read on $object's handle. All handles indicated by set_group plus STDOUT
-will have all data to come out of $object printed to them during expect() if
-log_group and log_stdout are set.
-	Changed from older versions is the regular expression handling. By
-default now all strings passed to expect() are treated as literals. To match
-a regular expression pass '-re' as a parameter in front of the pattern you want
-to match as a regexp. Example:
-	$object->expect(15, 'match me exactly','-re','match\s+me\s+exactly');
-	This change makes it possible to match literals and regular expressions
+will wait forever for a pattern to match. 
+
+If called in a scalar context, expect() will return the position of
+the matched pattern within $match_patterns, or undef if no pattern was
+matched. This is a position starting from 1, so if you want to know
+which of an array of @matched_patterns matched you should subtract one
+from the return value.
+
+If called in an array context expect() will return
+($matched_pattern_position, $error, $successfully_matching_string,
+$before_match, and $after_match).
+
+$matched_pattern_position will contain the value that would have been
+returned if expect() had been called in a scalar context. $error is
+the error that occurred that caused expect() to return. $error will
+contain a number followed by a string equivalent expressing the nature
+of the error. Possible values are undef, indicating no error,
+'1:TIMEOUT' indicating that $timeout seconds had elapsed without a
+match, '2:EOF' indicating an eof was read from $object, '3: spawn
+id($fileno) died' indicating that the process exited before matching
+and '4:$!' indicating whatever error was set in $ERRNO during the last
+read on $object's handle. All handles indicated by set_group plus
+STDOUT will have all data to come out of $object printed to them
+during expect() if log_group and log_stdout are set.
+
+Changed from older versions is the regular expression handling. By
+default now all strings passed to expect() are treated as literals. To
+match a regular expression pass '-re' as a parameter in front of the
+pattern you want to match as a regexp.
+
+Example:
+
+  $object->expect(15, 'match me exactly','-re','match\s+me\s+exactly');
+
+This change makes it possible to match literals and regular expressions
 in the same expect() call. 
-	Also new is multiline matching. ^ will now match the beginning of
+
+Also new is multiline matching. ^ will now match the beginning of
 lines. Unfortunately, because perl doesn't use $/ in determining where 
 lines break using $ to find the end of a line frequently doesn't work. This
 is because your terminal is returning "\r\n" at the end of every line. One
 way to check for a pattern at the end of a line would be to use \r?$ instead
-of $. Example:
-	Spawning telnet to a host, you might look for the escape character.
-telnet would return to you "\r\nEscape character is '^]'.\r\n". To find
-this you might use $match='^Escape char.*\.\r?$';
-$telnet->expect(10,'-re',$match); 
+of $. 
+
+Example: Spawning telnet to a host, you might look for the escape
+character.  telnet would return to you "\r\nEscape character is
+'^]'.\r\n". To find this you might use $match='^Escape char.*\.\r?$';
+
+  $telnet->expect(10,'-re',$match); 
+
+
+I<New more TCL-like interface (added by RGiersig@users.sourceforge.net):>
+
+It's now possible to expect on more than one connection at a time by
+specifying 'C<-i>' (see the TCL expect manpage) and a ref to an array
+containing Expect objects. 
+
+Furthermore, patterns can now be specified as array refs containing
+[$regexp, sub { ...}, @optional_subprams] . When the pattern matches,
+the subroutine is called with parameters ($matched_expect_obj,
+@optional_subparms). The subroutine can return the symbol
+`exp_continue' to continue the expect matching with timeout starting
+anew or return the symbol `exp_continue_timeout' for continuing expect
+without resetting the timeout count.
+
+`expect' is now exported by default.
+
+[I did my best to assure backward compatibility with the old-style
+call interface, but hey, I'm JAPH... -- Roland]
+
 
 	$object->exp_before();
 
@@ -188,6 +242,17 @@ no string was matched.
 exp_match_number() returns the number of the pattern matched by the last
 expect() call. Keep in mind that the first pattern in a list of patterns is 1,
 not 0. Returns undef if no pattern was matched.
+
+        $object->exp_matchlist();
+
+exp_matchlist() returns a list of matched substrings from the brackets
+() inside the regexp that last matched. ($object->exp_matchlist)[0]
+thus corresponds to $1, ($object->exp_matchlist)[1] to $2, etc.
+
+        $object->exp_command();
+
+exp_command() returns the string that was used to spawn the command. Helpful
+for debugging and for reused patternmatch subroutines.
 
         $object->exp_error();
 
@@ -268,6 +333,16 @@ become unset.
 Return pid of $object, if one exists. Initialized filehandles will not have
 pids (of course).
 
+	$object->exp_exitstatus()
+
+Returns the exit status of $object (if it already exited).
+
+	$object->exp_pty_handle()
+
+Returns a string representation of the attached pty, for example:
+`spawn id(5)' (pty has fileno 5), `handle id(7)' (pty was initialized
+from fileno 7) or `STDIN'. Useful for debugging.
+
 	$object->send_slow($delay, @strings);
 
 print each character from each string of @strings one at a time with $delay
@@ -314,3 +389,8 @@ doing regular expression matching. If set to 1 /m is used.
 you have this on you can match lines in the middle of a page of output
 using ^ and $ instead of it matching the beginning and end of the entire
 expression. I think this is handy.
+
+=head1 HOMEPAGE
+
+http://sourceforge.net/projects/expectperl/
+

@@ -1,14 +1,12 @@
 =head1 NAME
 
-Expect.pm (1.07) - Perl Expect interface
+Expect.pm (1.08) - Perl Expect interface
 
 =head1 SYNOPSIS
 
 	use Expect.pm
 
 =head1 DESCRIPTION
-
-
 
 The Expect module is a successor of Comm.pl and a descendent of Chat.pl. It
 more closely ressembles the Tcl Expect language than its predecessors. It
@@ -57,21 +55,37 @@ or intentionally change them (like doing -echo to get a password).
 If you foul your terminal's tty settings kill any hung processes and enter stty
 sane at a shell prompt. This should make your terminal manageable again.
 
+=head1 HOMEPAGE
+
+http://sourceforge.net/projects/expectperl/
+
 =head1 BUGS
 
 This module has not been tested on a great variety of platforms and
-is relatively young. Interesting and unexpected features will undoubtedly
-surface.
+doesn't seem to have a wide spread yet.  You may want to check the 
+modules homepage at http://sourceforge.net/projects/expectperl/
+and submit any questions or bugreports there.
 
-=head1 AUTHOR
+=head1 AUTHORS
 
-Austin Schutz <tex@habit.com>
+Austin Schutz <tex@habit.com>: (retired)
+
 Partner/Mad Scientist, The Habit Internet Cafe.
 Feel free to send any compliments/gripes my way.
-
 And now my shameless commercial plug:
 Check out Portland's First and Finest 'Net cafe at
 http://B<www.habit.com>
+
+Roland Giersig <RGiersig@users.sourceforge.net>:
+
+I have added the multi-match functionality and also now taken over
+maintainance and further development of Expect.pm. There will be a
+complete clean rewrite in the near future (cannot promise any date)
+that may break some backward-compatibility for cleaner design.  For
+example, I would like to break it up somewhat, probably move the
+interconnect-stuff to a separate module to slim down the core
+functionality.  I still want to keep it as close to Tcl/Expect as
+possible to make switching real easy.
 	
 =head1 CONTRIBUTORS
 
