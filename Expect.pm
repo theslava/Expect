@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_01";
+  $Expect::VERSION = "1.13_02";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -212,11 +212,12 @@ sub AUTOLOAD {
     croak "ERROR: cannot find method `$name' in class $type";
   }
   my $varname = $Readable_Vars{$name};
-  my $tmp = ${*$self}{$varname};
+  my $tmp;
+  $tmp = ${*$self}{$varname} if exists ${*$self}{$varname};
 
   if (@_) {
     if (exists $Writeable_Vars{$name}) {
-      my $ref = ref(${*$self}{$varname});
+      my $ref = ref($tmp);
       if ($ref eq 'ARRAY') {
 	${*$self}{$varname} = [ @_ ];
       } elsif ($ref eq 'HASH') {
@@ -1280,7 +1281,8 @@ sub soft_close {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
       ${*$self}{exp_Pid} = undef;
-      return $?;
+      ${*$self}{exp_Exit} = $?;
+      return ${*$self}{exp_Exit};
     }
     sleep 1;			# Keep loop nice.
   }
@@ -1299,6 +1301,7 @@ sub soft_close {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
       ${*$self}{exp_Pid} = undef;
+      ${*$self}{exp_Exit} = $?;
       return $?;
     }
     sleep 1;
@@ -1331,7 +1334,8 @@ sub hard_close {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
       ${*$self}{exp_Pid} = undef;
-      return $?;
+      ${*$self}{exp_Exit} = $?;
+      return ${*$self}{exp_Exit};
     }
     sleep 1;			# Keep loop nice.
   }
@@ -1350,7 +1354,8 @@ sub hard_close {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
       ${*$self}{exp_Pid} = undef;
-      return $?;
+      ${*$self}{exp_Exit} = $?;
+      return ${*$self}{exp_Exit};
     }
     sleep 1;
   }
@@ -1365,7 +1370,8 @@ sub hard_close {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} killed, Status: $?\r\n";
       }
       ${*$self}{exp_Pid} = undef;
-      return $?;
+      ${*$self}{exp_Exit} = $?;
+      return ${*$self}{exp_Exit};
     }
     sleep 1;
   }
