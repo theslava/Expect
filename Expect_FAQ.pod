@@ -10,14 +10,28 @@ RGiersig@cpan.org
 
 =head1 DESCRIPTION
 
+=head2 Can I use this module with ActivePerl on Windows?
+
+I don't know.  Probably not.  There is no native support for ptys
+available under Windows.  On the other hand, Cygwin
+(http://sourceware.cygnus.com) promises to provide POSIX ptys for NT,
+so it should be possible to run Expect.pm under Cygwin.
+
+The Tcl/Expect homepage at http://expect.nist.gov gives two links to
+porting projects that might be of interest (one being DejaGnu on
+Cygwin).
+
 =head2 How can I find out what Expect is doing?
 
 If you set
 
   $Expect::Exp_Internal = 1;
 
-Expect will tell you very verbosely what it is receiving,
-what matching it is trying and what it found.
+Expect will tell you very verbosely what it is receiving and sending,
+what matching it is trying and what it found.  You can do this on a
+per-command base with
+
+  $exp->exp_internal(1);
 
 You can also set
 
@@ -31,6 +45,33 @@ Yes, just set
 
   $Expect::Log_Stdout = 0;
 
+to globally disable it or
+
+   $exp->log_stdout(0);
+
+for just that command.  'log_user' is provided as an alias so
+Tcl/Expect user get a DWIM experience... :-)
+
+=head2 I want to log the whole session to a file.
+
+Use
+
+  $exp->log_file("filename");
+
+or
+
+  $exp->log_file($filehandle);
+
+to start logging.  Note that the log is appended by default, but you can
+specify an optional mode "w" to truncate the logfile:
+
+  $exp->log_file("filename", "w");
+
+To stop logging, just call it with a false argument:
+
+  $exp->log_file(undef);
+
+
 =head2 How can I turn off multi-line matching for my regexps?
 
 To globally unset multi-line matching for all regexps:
@@ -42,13 +83,24 @@ You can do that on a per-regexp basis by stating C<(?-m)> inside the regexp
 
 =head2 How can I expect on multiple spawned commands?
 
-You can use the B<-i> parameter to specify a single or a list of Expect
-objects.  All following patterns will be evaluated against that list.
+You can use the B<-i> parameter to specify a single object or a list
+of Expect objects.  All following patterns will be evaluated against
+that list.
 
 You can specify B<-i> multiple times to create groups of objects
-and patterns to mtach against within the same expect statement.
+and patterns to match against within the same expect statement.
+
+This works just like in Tcl/Expect.
 
 See the source example below.
+
+=head2 I seem to have problems with ptys!
+
+[You're on HP-UX, right?]  Well, pty handling is really a black magic,
+as it is extremely system dependend.  I'm thinking about stealing
+the pty stuff from Tcl/Expect (Hi, Don!), as that code looks much
+more mature than what gets done in Expect and/or IO::[TP]ty.
+Please be patient, this may take a while...
 
 =head1 Source Examples
 

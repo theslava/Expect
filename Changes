@@ -98,3 +98,56 @@ v1.10
 (probably when I changed the version number after testing the patches),
 forcing me to do anouther release. >:-(
 
+
+Expect v1.11
+============
+
+
+	Bugs fixed:
+
+! max_accum (match_max) finally really restricts the match-buffer-size.
+
+! expect() didn't return the correct error state upon EOF
+
+! soft_close() was re-reading the filehandle even when an EOF
+  had already been detected, resulting in a very long delay.
+
+! exp_continue() returned a value that got truncated with certain
+  perl versions (5.6 :-( ) on certain systems.
+
+
+	Features added:
+
++ Lee Eakin <leakin@japh.itg.ti.com>contributed a perl version of the
+  kibitz script which might be of common interest.  See the
+  examples/kibitz subdir.  Thanks Lee!
+
++ Expect got it's own print() so we can show what's getting
+  sent to the spawned program when exp_internal is set.
+  (suggested by horos@earth.he.net)
+
++ a session can now be logged to a file by setting log_file().  Thanks to
+  Marcel Widjaja <marcel.widjaja@sun.com> for suggesting this.
+
++ I added some aliases for certain methods to help Tcl/Expect users
+  to a WLIE experience (Work Like I Expect).  'exp_pid', 'match_max',
+  'log_file', 'log_user', even 'send' (which is an alias for 'print')
+  are all there now.  But I won't make 'send_user' an alias for
+  'print STDOUT', you have to draw a line somewhere.
+
++ some diagnosis messages now use cluck to print a stacktrace
+  (suggested by horos@earth.he.net)
+
++ there is a new option 'restart_timeout_upon_receive', that, when
+  set to 1, will restart the timeout within the expect call.  This is
+  useful when supervising an application that produces periodic, but
+  not well-defined output and you still want to react to certain
+  patterns.  Just say
+
+    $exp->restart_timeout_upon_receive(1);
+    $exp->expect($timeout,
+                 [ timeout => \&report_timeout ],
+		 [ qr/pattern/ => \&handle_pattern ]);
+
+  (suggested by horos@earth.he.net)
+

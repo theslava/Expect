@@ -1,15 +1,18 @@
 #
 # Please see the .pod files for documentation. This module is copyrighted
 # as per the usual perl legalese:
-# Copyright (c) 1997 Austin Schutz. All rights reserved. This program is free
-# software; you can redistribute it and/or modify it under the same terms as
-# Perl itself.
+# Copyright (c) 1997 Austin Schutz.
+# expect() interface & functionality enhancements (c) 1999 Roland Giersig.
+#
+# All rights reserved. This program is free software; you can
+# redistribute it and/or modify it under the same terms as Perl
+# itself.
 #
 # Don't blame/flame me if you bust your stuff.
-# Austin Schutz <tex@habit.com>
+# Austin Schutz <ASchutz@users.sourceforge.net>
 #
-# expect() interface & functionality enhanced by
-# Roland Giersig <RGiersig@users.sourceforge.net>
+# This module now is maintained by
+# Roland Giersig <RGiersig@cpan.org>
 #
 
 require 5;			# 4 won't cut it. 
@@ -24,7 +27,7 @@ use strict 'vars';
 use strict 'subs';
 use POSIX;			# For setsid. 
 use Fcntl;			# For checking file handle settings.
-use Carp;
+use Carp qw(cluck croak carp confess);
 use Exporter;
 
 # This is necessary to make routines within Expect work.
@@ -33,7 +36,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.10";
+  $Expect::VERSION = "1.11";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -41,12 +44,24 @@ BEGIN {
   #  $Expect::Log_Stdout = 1;
   $Expect::Log_Group = 1;
   $Expect::Debug = 0;
+  $Expect::Exp_Max_Accum = 0; # unlimited
   $Expect::Exp_Internal = 0;
   $Expect::Manual_Stty = 0;
   $Expect::Multiline_Matching = 1;
   @Expect::Before_List = ();
   @Expect::After_List = ();
+  %Expect::Spawned_PIDs = ();
 }
+
+# propagate SIGWINCH to children; but we need to also propagate terminal
+# size changes, so this is work to do.
+#$SIG{WINCH} = sub {
+#  my @pids = keys %Expect::Spawned_PIDs;
+#  print STDERR "SIGWINCH received, propagating to @pids\r\n";
+#  if (@pids) {
+#    kill "WINCH", @pids;
+#  }
+#};
 
 sub version {
   my($version) = shift;
@@ -110,12 +125,13 @@ sub spawn {
   # I think this also reflects Tcl Expect-like behavior.
   ${*$self}{exp_Pty_Handle} = "spawn id(".$self->fileno().")";
   if ((${*$self}{"exp_Debug"}) or (${*$self}{"exp_Exp_Internal"})) {
-    print STDERR ("Spawned '$cmd'\r\n",
-		  "\t${*$self}{exp_Pty_Handle}\r\n",
-		  "\tPid: ${*$self}{exp_Pid}\r\n",
-		  "\tTty: $name_of_tty\r\n",
-		 );
+    cluck("Spawned '$cmd'\r\n",
+	  "\t${*$self}{exp_Pty_Handle}\r\n",
+	  "\tPid: ${*$self}{exp_Pid}\r\n",
+	  "\tTty: $name_of_tty\r\n",
+	 );
   }
+  $Expect::Spawned_PIDs{${*$self}{exp_Pid}} = undef;
   return $self;
 }
 
@@ -127,7 +143,7 @@ sub exp_init {
   my ($class) = shift;
   my($self) = shift;
   bless $self, $class;
-  die "exp_init not passed a file object, stopped" 
+  croak "exp_init not passed a file object, stopped" 
     unless defined($self->fileno());
   $self->autoflush();
   # Define standard variables.. debug states, etc.
@@ -149,11 +165,16 @@ sub exp_init {
 my %Writeable_Vars = ( debug            => 'exp_Debug',
 		       exp_internal     => 'exp_Exp_Internal',
 		       exp_command      => 'exp_Command',
+		       max_accum        => 'exp_Max_Accum',
+		       match_max        => 'exp_Max_Accum',
 		       log_stdout       => 'exp_Log_Stdout',
+		       log_user         => 'exp_Log_Stdout',
 		       log_group        => 'exp_Log_Group',
 		       manual_stty      => 'exp_Manual_Stty',
+		       restart_timeout_upon_receive => 'exp_Continue',
 		     );
 my %Readable_Vars = ( pid               => 'exp_Pid',
+		      exp_pid           => 'exp_Pid',
 		      exp_match_number  => 'exp_Match_Number',
 		      exp_error         => 'exp_Error',
 		      exp_command       => 'exp_Command',
@@ -163,6 +184,7 @@ my %Readable_Vars = ( pid               => 'exp_Pid',
 		      exp_after         => 'exp_After',
 		      exp_exitstatus    => 'exp_Exit',
 		      exp_pty_handle    => 'exp_Pty_Handle',
+		      exp_logfile       => 'exp_Log_File',
 		      %Writeable_Vars,
 		    );
 
@@ -251,13 +273,28 @@ sub set_group {
   }
 }
 
-sub max_accum {
-  my($self) = shift;
-  return ${*$self}{"exp_Max_Accum"} unless defined($_[0]);
-  ${*$self}{"exp_Max_Accum"} = shift;
-  if (${*$self}{"exp_Max_Accum"} eq 'undefine') {
-    undef(${*$self}{"exp_Max_Accum"});
-  }
+sub log_file {
+    my $self = shift;
+
+    return(${*$self}{exp_Log_File})
+      if not @_;  # we got no param, return filehandle
+
+    my $file = shift;
+    my $mode = shift || "a";
+
+    if (${*$self}{exp_Log_File}) {
+      close(${*$self}{exp_Log_File});
+    }
+    return if (not $file);
+    my $fh = $file;
+    if (not ref($file)) {
+      # it's a filename
+      $fh = new IO::File $file, $mode
+	or croak "Cannot open logfile $file: $!";
+    }
+    croak "Given logfile doesn't have a 'print' method"
+      if not $fh->can("print");
+    ${*$self}{exp_Log_File} = $fh;
 }
 
 # I'm going to leave this here in case I might need to change something.
@@ -290,8 +327,8 @@ sub clear_accum {
 
 ######################################################################
 # define constants for pattern subs
-sub exp_continue() { 0xDEADBEEF }
-sub exp_continue_timeout() { 0xBADDEAD }
+sub exp_continue() { "exp_continue" }
+sub exp_continue_timeout() { "exp_continue_timeout" }
 
 ######################################################################
 # Expect on multiple objects at once.
@@ -418,7 +455,7 @@ sub expect {
     _multi_expect(0, undef, @Expect::Before_List);
   }
 
-  print STDERR ("Starting EXPECT pattern matching...\r\n")
+  cluck ("Starting EXPECT pattern matching...\r\n")
     if ($debug or $internal);
   my @ret;
   @ret = _multi_expect($timeout, $timeout_hook,
@@ -449,7 +486,7 @@ sub _multi_expect($$@) {
   foreach my $pat (@_) {
     my @patterns = @{$pat}[1..$#{$pat}];
     foreach my $exp (@{$pat->[0]}) {
-      if (defined(${*$exp}{"exp_Max_Accum"})) {
+      if (exists ${*$exp}{"exp_Max_Accum"} and ${*$exp}{"exp_Max_Accum"}) {
 	${*$exp}{exp_Accum} =
 	  $exp->_trim_length(${*$exp}{exp_Accum},
 			     ${*$exp}{exp_Max_Accum});
@@ -458,7 +495,7 @@ sub _multi_expect($$@) {
 		    "\tTimeout: ",
 		    (defined($timeout) ? $timeout : "unlimited" ),
 		    " seconds.\r\n",
-		    "\tCurrent time: ", time(), "\r\n",
+		    "\tCurrent time: ". localtime(). "\r\n",
 		   ) if $Expect::Debug;
 
       # What are we expecting? What do you expect? :-)
@@ -492,6 +529,7 @@ sub _multi_expect($$@) {
 
  READLOOP:
   while ($exp_cont) {
+    $exp_cont = 1;
     my $rmask = '';
     my $time_left = undef;
     if (defined $timeout) {
@@ -618,20 +656,14 @@ sub _multi_expect($$@) {
 		$exp_cont = &{$pattern->[3]}($exp);
 	      }
 	    }
-	    if ($exp_cont and
-		($exp_cont == exp_continue
-		 or $exp_cont eq 'exp_continue'
-		 or $exp_cont eq 'exp_continue_timeout'
-		 or $exp_cont == exp_continue_timeout)) {
-	      if ($exp_cont == exp_continue
-		  or $exp_cont eq 'exp_continue') {
-		print STDERR ("Continuing expect, restarting timeout...\r\n",
-			     ) if ($Expect::Exp_Internal or $Expect::Debug);
-		$start_loop_time = time() # restart timeout count
-	      } else {
-		print STDERR ("Continuing expect...\r\n",
-			     ) if ($Expect::Exp_Internal or $Expect::Debug);
-	      }
+	    if ($exp_cont and $exp_cont eq exp_continue) {
+	      print STDERR ("Continuing expect, restarting timeout...\r\n")
+		if ($Expect::Exp_Internal or $Expect::Debug);
+	      $start_loop_time = time(); # restart timeout count
+	      next READLOOP;
+	    } elsif ($exp_cont and $exp_cont eq exp_continue_timeout) {
+	      print STDERR ("Continuing expect...\r\n")
+		if ($Expect::Exp_Internal or $Expect::Debug);
 	      next READLOOP;
 	    }
 	    last READLOOP;
@@ -671,9 +703,10 @@ sub _multi_expect($$@) {
 	  if ($nread == 0) {
 	    print STDERR ("${*$exp}{exp_Pty_Handle}: EOF\r\n")
 	      if ($Expect::Debug);
-	    ${*$exp}{exp_Before} = $exp->clear_accum();
+	    $before = ${*$exp}{exp_Before} = $exp->clear_accum();
 	    $err = "2:EOF";
 	    ${*$exp}{exp_Error} = $err;
+	    ${*$exp}{exp_Has_EOF} = 1;
 	    $exp_cont = undef;
 	    foreach my $eof_pat (grep {$_->[1] eq '-eof'} @{$pat}[1..$#{$pat}]) {
 	      my $ret;
@@ -687,10 +720,8 @@ sub _multi_expect($$@) {
 		$ret = &{$eof_pat->[3]}($exp);
 	      }
 	      if ($ret and
-		  ($ret == exp_continue
-		   or $ret eq 'exp_continue'
-		   or $ret eq 'exp_continue_timeout'
-		   or $ret == exp_continue_timeout)) {
+		  ($ret eq exp_continue
+		   or $ret eq exp_continue_timeout)) {
 		    $exp_cont = $ret;
 	      }
 	    }
@@ -703,6 +734,7 @@ sub _multi_expect($$@) {
 		$err = "3:Child PID ${*$exp}{exp_Pid} exited with status $?";
 		${*$exp}{exp_Error} = $err;
 		${*$exp}{exp_Exit} = $?;
+		delete $Expect::Spawned_PIDs{${*$exp}{exp_Pid}};
 		${*$exp}{exp_Pid} = undef;
 	      }
 	    }
@@ -719,19 +751,25 @@ sub _multi_expect($$@) {
 	  $buffer =~ s/ \cH//g;
 	  # Append it to the accumulator.
 	  ${*$exp}{exp_Accum} .= $buffer;
+	  if (exists ${*$exp}{exp_Max_Accum}
+	      and ${*$exp}{exp_Max_Accum}) {
+	    ${*$exp}{exp_Accum} =
+	      $exp->_trim_length(${*$exp}{exp_Accum},
+				 ${*$exp}{exp_Max_Accum});
+	  }
 	  ${*$exp}{exp_New_Data} = 1; # next round we try to match again
 
+	  $exp_cont = exp_continue
+	    if (exists ${*$exp}{exp_Continue} and ${*$exp}{exp_Continue});
 	  # Now propagate what we have read to other listeners...
 	  $exp->_print_handles($buffer);
 
 	  # End handle reading section.
 	}
-
       }
     }				# end read loop
     $start_loop_time = time()	# restart timeout count
-      if ($exp_cont and
-	  ($exp_cont eq exp_continue or $exp_cont eq 'exp_continue'));
+      if ($exp_cont and $exp_cont eq exp_continue);
   }
   # End READLOOP
 
@@ -741,7 +779,7 @@ sub _multi_expect($$@) {
     $err = "1:TIMEOUT";
     foreach my $pat (@_) {
       foreach my $exp (@{$pat->[0]}) {
-	${*$exp}{exp_Before} = ${*$exp}{exp_Accum};
+	$before = ${*$exp}{exp_Before} = ${*$exp}{exp_Accum};
 	next if not defined $exp->fileno(); # skip already closed
 	${*$exp}{exp_Error} = $err unless ${*$exp}{exp_Error};
       }
@@ -802,7 +840,7 @@ sub _multi_expect($$@) {
 	${*$exp_matched}{exp_Match_Number};
   }
 
-  return wantarray? (undef, undef, undef, undef, undef, undef) : undef;
+  return wantarray? (undef, $err, undef, $before, undef, undef) : undef;
 }
 
 
@@ -919,7 +957,7 @@ sub interact {
   # Normally an undef passed to set_group will return the current groups.
   # It is possible that it may be of worth to make it possible to undef
   # The current group without doing this.
-  unless (defined (@old_group)) {
+  unless (@old_group) {
     @{${*$self}{exp_Listen_Group}} = ();
   }
   $self->manual_stty($old_manual_stty_val);
@@ -1080,6 +1118,23 @@ sub interconnect {
   }
 }
 
+# we provide our own print so we can debug what gets sent to the
+# processes...
+sub print (@) {
+  my ($self, @args) = @_;
+  if ($Expect::Exp_Internal) {
+    my $args = _make_readable(join('', @args));
+    cluck "Sending '$args' to ${*$self}{exp_Pty_Handle}\r\n";
+  }
+  print STDOUT @args
+    if ${*$self}{exp_Log_Stdout};
+  ${*$self}{exp_Log_File}->print(@args)
+    if ${*$self}{exp_Log_File};
+  $self->SUPER::print(@args);
+}
+
+# make an alias for Tcl/Expect users for a DWIM experience...
+*send = \&print;  
 
 # This is an Expect standard. It's nice for talking to modems and the like
 # where from time to time they get unhappy if you send items too quickly.
@@ -1154,27 +1209,29 @@ sub soft_close {
   my($end_time,$select_time,$temp_buffer);
   my($close_status);
   # Give it 15 seconds to cough up an eof.
-  print STDERR "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+  cluck "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
   return -1 if not defined $self->fileno(); # skip if handle already closed
-  $end_time = time() + 15;
-  while ($end_time > time()) {
-    $select_time = $end_time - time();
-    # Sanity check.
-    $select_time = 0 if $select_time < 0;
-    $rmask = '';
-    vec($rmask,$self->fileno(),1) = 1;
-    ($nfound) = select($rmask,undef,undef,$select_time);
-    last unless (defined($nfound) && $nfound);
-    $nread = sysread($self,$temp_buffer,8096);
-    # 0 = EOF.
-    unless (defined($nread) && $nread) {
-      print STDERR "Got EOF from ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
-      last;
+  unless (exists ${*$self}{exp_Has_EOF} and ${*$self}{exp_Has_EOF}) {
+    $end_time = time() + 15;
+    while ($end_time > time()) {
+      $select_time = $end_time - time();
+      # Sanity check.
+      $select_time = 0 if $select_time < 0;
+      $rmask = '';
+      vec($rmask,$self->fileno(),1) = 1;
+      ($nfound) = select($rmask,undef,undef,$select_time);
+      last unless (defined($nfound) && $nfound);
+      $nread = sysread($self,$temp_buffer,8096);
+      # 0 = EOF.
+      unless (defined($nread) && $nread) {
+	print STDERR "Got EOF from ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+	last;
+      }
+      $self->_print_handles($temp_buffer);
     }
-    $self->_print_handles($temp_buffer);
-  }
-  if (($end_time <= time()) && ${*$self}{exp_Debug}) {
-    print STDERR "Timed out waiting for an EOF from ${*$self}{exp_Pty_Handle}.\r\n";
+    if (($end_time <= time()) && ${*$self}{exp_Debug}) {
+      print STDERR "Timed out waiting for an EOF from ${*$self}{exp_Pty_Handle}.\r\n";
+    }
   }
   if ( ($close_status = $self->close()) && ${*$self}{exp_Debug}) {
     print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
@@ -1187,6 +1244,7 @@ sub soft_close {
     $returned_pid = waitpid($self->pid(), &WNOHANG);
     # Stop here if the process dies.
     if (defined($returned_pid) && $returned_pid) {
+      delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
@@ -1204,6 +1262,7 @@ sub soft_close {
   while ($end_time > time()) {
     $returned_pid = waitpid($self->pid(), &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
+      delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
@@ -1221,7 +1280,7 @@ sub hard_close {
   my($nfound,$nread,$rmask,$returned_pid);
   my($end_time,$select_time,$temp_buffer);
   my($close_status);
-  print STDERR "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+  cluck "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
   # Don't wait for an EOF.
   if ( ($close_status = $self->close()) && ${*$self}{exp_Debug}) {
     print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
@@ -1234,6 +1293,7 @@ sub hard_close {
     $returned_pid = waitpid($self->pid(), &WNOHANG);
     # Stop here if the process dies.
     if (defined($returned_pid) && $returned_pid) {
+      delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
       }
@@ -1251,6 +1311,7 @@ sub hard_close {
   while ($end_time > time()) {
     $returned_pid = waitpid($self->pid(), &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
+      delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
       }
@@ -1264,6 +1325,7 @@ sub hard_close {
   while ($end_time > time()) {
     $returned_pid = waitpid($self->pid(), &WNOHANG);
     if (defined($returned_pid) && $returned_pid) {
+      delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
 	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} killed, Status: $?\r\n";
       }
@@ -1293,6 +1355,7 @@ sub _init_vars {
   ${*$self}{exp_Pty_Buffer} = '';
 
   # Initialize accumulator.
+  ${*$self}{exp_Max_Accum} = $Expect::Exp_Max_Accum;
   ${*$self}{exp_Accum} = '';
 
   # create empty expect_before & after lists
@@ -1358,7 +1421,10 @@ sub _print_handles {
     }
   }
   # If ${*$self}{exp_Pty_Handle} is STDIN this would make it echo.
-  print $print_this if ${*$self}{"exp_Log_Stdout"};
+  print STDOUT $print_this
+    if ${*$self}{"exp_Log_Stdout"};
+  ${*$self}{exp_Log_File}->print($print_this)
+    if ${*$self}{exp_Log_File};
   $|= 1;			# This should not be necessary but autoflush() doesn't always work.
 }
 

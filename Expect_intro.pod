@@ -6,6 +6,12 @@ Expect.pm (1.08) - Perl Expect interface
 
 	use Expect.pm
 
+=head1 NOTE
+
+This document is obsolete and left in for hysterical raisins.  Expect.pod
+now is the officially maintained document.  Expect_FAQ.pod should be
+of value too.
+
 =head1 DESCRIPTION
 
 The Expect module is a successor of Comm.pl and a descendent of Chat.pl. It

@@ -1,9 +1,10 @@
 =head1 NAME
 
-	Expect.pm - Expect for Perl
+	Expect.pm - Expect for Perl, Version 1.11
 
 =head1 SYNOPSIS
 	
+	use Expect;
 
 Expect.pm is built to either spawn a process or take an existing filehandle
 and interact with it such that normally interactive tasks can be done
@@ -14,11 +15,11 @@ The (current) public functions that make up Expect.pm are:
 	Expect->exp_init(\*FILEHANDLE)
 	Expect->spawn($command, @parameters)
 	Expect::interconnect(@objects_to_be_read_from)
-	Expect::test_handles($timeout,@objects_to_test)
-	Expect::version($version_requested or undef);
+	Expect::test_handles($timeout, @objects_to_test)
+	Expect::version($version_requested | undef);
 	$object->clear_accum()
 	$object->debug($debug_level)
-	$object->exp_internal(0, 1, or undef)
+	$object->exp_internal(0 | 1 | undef)
 	$object->exp_stty(@stty_modes)# See the IO::Stty docs
 	$object->expect($timeout, @match_patterns)
 	$object->exp_before();
@@ -30,14 +31,16 @@ The (current) public functions that make up Expect.pm are:
         $object->exp_command();
         $object->exp_exitstatus();
         $object->exp_pty_handle();
+        $object->restart_timeout_upon_receive(0 | 1);
 	$object->interact($other_object, $escape_sequence)
-	$object->log_group(0, 1, or undef)
-	$object->log_stdout(0, 1, or undef)
-	$object->manual_stty(0, 1, or undef)
-	$object->max_accum($max_accumulator_buffersize or undef)
-	$object->pid();
+	$object->log_group(0 | 1 | undef)
+	$object->log_user(0 | 1 | undef)
+	$object->log_file("filename" | $filehandle | undef)
+	$object->manual_stty(0 | 1 | undef)
+	$object->match_max($max_buffersize or undef)
+	$object->exp_pid();
 	$object->send_slow($delay, @strings_to_send)
-	$object->set_group(@listen_group_objects or undef)
+	$object->set_group(@listen_group_objects | undef)
 	$object->set_seq($sequence,\&function,\@parameters);
 
 	There are several configurable package variables that affect the behavior of Expect. They are:
@@ -51,24 +54,39 @@ The (current) public functions that make up Expect.pm are:
 
 =head1	DESCRIPTION 
 
-See Expect_intro.pod for an overall description.
+The Expect module is a successor of Comm.pl and a descendent of Chat.pl. It
+more closely ressembles the Tcl Expect language than its predecessors. It
+does not contain any of the networking code found in Comm.pl. I suspect this
+would be obsolete anyway given the advent of IO::Socket and external tools
+such as netcat.
+
+Expect.pm is an attempt to have more of a switch() & case: feeling to make 
+decision processing more fluid.  Three separate types of debugging have 
+been implemented to make code production easier.
+
+It is now possible to interconnect multiple file handles (and processes) much
+like Tcl's expect. An attempt was made to enable all the features of Tcl's
+expect without forcing Tcl on the victim programmer :-) .
+
 
 =head1 USAGE
 
-	Expect->exp_init(\*FILEHANDLE)
+=over 4
+
+=item Expect->exp_init(\*FILEHANDLE)
 
 Initializes $new_handle_object for use with other Expect functions. It must
 be passed a B<_reference_> to FILEHANDLE if you want it to work properly. 
 IO::File objects are preferable. Returns a reference to the newly created
 object.
 
-	Expect->spawn($command, @parameters)
+=item Expect->spawn($command, @parameters)
 
 Forks and execs $command. returns a reference to the newly created process
 object. Returns undef if the fork was unsuccessful or the object could not be
 created. 
 
-	Expect::interconnect(@objects);
+=item Expect::interconnect(@objects);
 
 Read from @objects and print to their @listen_groups until an escape sequence
 is matched from one of @objects and the associated function returns 0 or undef.
@@ -82,25 +100,25 @@ group_ will be set to 'raw -echo' for the duration of interconnection.
 Setting $object->manual_stty() will stop this behavior per object.
 The original tty settings will be restored as interconnect exits.
 
-	Expect::test_handles(@objects)
+=item Expect::test_handles(@objects)
 
 Given a set of objects determines which objects' handles have data ready
 to be read. B<Returns an array> who's members are positions in @objects that
 have ready handles. Returns undef if there are no such handles ready.
 
-        Expect::version($version_requested or undef);
+=item Expect::version($version_requested or undef);
 
 Returns current version of Expect. As of .99 earlier versions are not
 supported. Too many things were changed to make versioning possible.
 
-	$object->clear_accum()
+=item $object->clear_accum()
 
-Clear the contents of the accumulator for $object. This gets rid of any residual
-contents of a handle after expect() or send_slow() such that the next expect()
-call will only see new data from $object. The contents of the accumulator are 
-returned.
+Clear the contents of the accumulator for $object. This gets rid of
+any residual contents of a handle after expect() or send_slow() such
+that the next expect() call will only see new data from $object. The
+contents of the accumulator are returned.
 
-	$object->debug(0, 1, 2, 3 or undef)
+=item $object->debug(0 | 1 | 2 | 3 | undef)
 
 Sets debug level for $object. 1 refers to general debugging information, 2
 refers to verbose debugging and 0 refers to no debugging. If you call
@@ -114,7 +132,7 @@ time data is read from an Expect object. This was implemented by
 request. I recommend against using this unless you think you need it
 as it can create quite a quantity of output under some circumstances..
 
-	$object->exp_internal(0, 1 or undef)
+=item $object->exp_internal(1 | 0)
 
 Sets/unsets 'exp_internal' debugging. This is similar in nature to its Tcl
 counterpart. It is extremely valuable when debugging expect() sequences.
@@ -123,15 +141,17 @@ $Expect::Exp_Internal, normally 0. Returns the current setting if called
 without parameters. It is highly recommended that you make use of the
 debugging features lest you have angry code.
 
-	$object->expect_stty($mode)
+=item $object->expect_stty($mode)
 
 Sets the tty mode for $object's associated terminal to $mode. Typical
 values are 'sane', 'raw', and 'raw -echo'. This should be used in conjunction
 with manual_stty(). See the docs for IO::Stty to see what values make sense
 here.
 
-	$object->expect($timeout, @match_patterns)
-    or
+=item $object->expect($timeout, @match_patterns)
+
+or, more like Tcl/Expect,
+
 	expect($timeout, 
 	       '-i', [ $obj1, $obj2, ... ], 
 	             [ $re_pattern, sub { ...; exp_continue; }, @subparms, ],
@@ -201,7 +221,7 @@ character.  telnet would return to you "\r\nEscape character is
   $telnet->expect(10,'-re',$match); 
 
 
-I<New more TCL-like interface (added by RGiersig@users.sourceforge.net):>
+I<New more TCL-like interface (added by RGiersig@cpan.org):>
 
 It's now possible to expect on more than one connection at a time by
 specifying 'C<-i>' (see the TCL expect manpage) and a ref to an array
@@ -221,47 +241,72 @@ without resetting the timeout count.
 call interface, but hey, I'm JAPH... -- Roland]
 
 
-	$object->exp_before();
+=item $object->exp_before();
 
 exp_before() returns the 'before' part of the last expect() call. If the last
 expect() call didn't match anything, exp_before() will return the entire
 output of the object accumulated before the expect() call finished.
 
-        $object->exp_after();
+=item $object->exp_after();
  
 exp_after() returns the 'after' part of the last expect() call. If the last
 expect() call didn't match anything, exp_after() will return undef().
 
-        $object->exp_match();
+=item $object->exp_match();
 
 exp_match() returns the string matched by the last expect() call, undef if
 no string was matched.
 
-        $object->exp_match_number();
+=item $object->exp_match_number();
 
 exp_match_number() returns the number of the pattern matched by the last
 expect() call. Keep in mind that the first pattern in a list of patterns is 1,
 not 0. Returns undef if no pattern was matched.
 
-        $object->exp_matchlist();
+=item $object->exp_matchlist();
 
 exp_matchlist() returns a list of matched substrings from the brackets
 () inside the regexp that last matched. ($object->exp_matchlist)[0]
 thus corresponds to $1, ($object->exp_matchlist)[1] to $2, etc.
 
-        $object->exp_command();
-
-exp_command() returns the string that was used to spawn the command. Helpful
-for debugging and for reused patternmatch subroutines.
-
-        $object->exp_error();
+=item $object->exp_error();
 
 exp_error() returns the error generated by the last expect() call if
 no pattern was matched. It is typically useful to examine the value returned by
 exp_before() to find out what the output of the object was in determining
 why it didn't match any of the patterns.
 
-	$object->interact( C<\*FILEHANDLE, $escape_sequence>)
+=item $object->exp_command();
+
+exp_command() returns the string that was used to spawn the command. Helpful
+for debugging and for reused patternmatch subroutines.
+
+=item $object->exp_exitstatus()
+
+Returns the exit status of $object (if it already exited).
+
+=item $object->exp_pty_handle()
+
+Returns a string representation of the attached pty, for example:
+`spawn id(5)' (pty has fileno 5), `handle id(7)' (pty was initialized
+from fileno 7) or `STDIN'. Useful for debugging.
+
+=item $object->restart_timeout_upon_receive(0 | 1)
+
+If this is set to 1, the expect timeout is retriggered whenever something
+is received from the spawned command.  This allows to perform some
+aliveness testing and still expect for patterns.
+
+    $exp->restart_timeout_upon_receive(1);
+    $exp->expect($timeout,
+                 [ timeout => \&report_timeout ],
+		 [ qr/pattern/ => \&handle_pattern],
+                );
+
+Now the timeout isn't triggered if the command produces any kind of output,
+i.e. is still alive, but you can act upon patterns in the output.
+
+=item $object->interact( C<\*FILEHANDLE, $escape_sequence>)
 
 interact() is essentially a macro for calling interconnect() for
 connecting 2 processes together. \*FILEHANDLE defaults to \*STDIN and 
@@ -270,7 +315,7 @@ is read from B<FILEHANDLE>, not $object. $object's listen group will
 consist solely of \*FILEHANDLE for the duration of the interaction.
 \*FILEHANDLE will not be echoed on STDOUT. 
 
-	$object->log_group(0, 1, or undef)
+=item $object->log_group(0 | 1 | undef)
 
 Set/unset logging of $object to its 'listen group'. If set all objects
 in the listen group will have output from $object printed to them during
@@ -278,7 +323,7 @@ $object->expect(), $object->send_slow(), and C<Expect::interconnect($object
 , ...)>. Default value is on. During creation of $object the setting will
 match the value of $Expect::Log_Group, normally 1.
 
-	$object->log_stdout(0, 1, or undef)
+=item $object->log_user(0 | 1 | undef)
 
 Set/unset logging of object's handle to STDOUT. This corresponds to Tcl's
 log_user variable. Returns current setting if called without parameters.
@@ -289,7 +334,26 @@ If/when you initialize STDIN it is usually associated with a tty which
 will by default echo to STDOUT anyway, so be careful or you will have
 multiple echoes.
 
-	$object->set_seq($sequence,\&function,\@function_parameters)
+=item $object->log_file("filename" | $filehandle | undef)
+              
+Log session to a file.  All characters send to or received from the
+spawned process are written to the file.  Normally appends to the
+logfile, but you can pass an additional mode of "w" to truncate the
+file upon open():
+
+  $object->log_file("filename", "w");
+
+Returns the logfilehandle.
+
+If called with an undef value, stops logging and closes logfile:
+
+  $object->log_file(undef);
+
+If called without argument, returns the logfilehandle:
+
+  $fh = $object->log_file();
+
+=item $object->set_seq($sequence, \&function, \@function_parameters)
 
 During Expect->interconnect() if $sequence is read from $object &function
 will be executed with parameters @function_parameters. It is B<_highly
@@ -305,45 +369,34 @@ should return after your function returns.
 The special sequence 'EOF' matches the end of file being reached by $object.
 See interconnect() for details.
 
-	$object->set_group(@listener_objects)
+=item $object->set_group(@listener_objects)
 
 @listener_objects is the list of objects that should have their handles 
 printed to by $object when Expect::interconnect, $object->expect() or
 $object->send_slow() are called. Calling w/out parameters will return
 the current list of the listener objects.
 
-	$object->manual_stty(0, 1, or undef)
+=item $object->manual_stty(0 | 1 | undef)
 
 Sets/unsets whether or not Expect should make reasonable guesses as to 
 when and how to set tty parameters for $object. Will match
 $Expect::Manual_Stty value (normally 0) when $object is created. If called
 without parameters manual_stty() will return the current manual_stty setting.
 
-	$object->max_accum($maximum_buffer_length, undef, or 'undefine')
+=item $object->match_max($maximum_buffer_length | undef)
 
 Set the maximum accumulator size for object. This is useful if you think
 that the accumulator will grow out of hand during expect() calls. Since
 the buffer will be matched by every match_pattern it may get slow if the
-buffer gets too large. Returns current value fs called without parameters.
-Not defined by default. If passed the string 'undefine' max_accum will
-become unset.
+buffer gets too large. Returns current value if called without parameters.
+Not defined by default.
 
-	$object->pid()
+=item $object->exp_pid()
 
 Return pid of $object, if one exists. Initialized filehandles will not have
 pids (of course).
 
-	$object->exp_exitstatus()
-
-Returns the exit status of $object (if it already exited).
-
-	$object->exp_pty_handle()
-
-Returns a string representation of the attached pty, for example:
-`spawn id(5)' (pty has fileno 5), `handle id(7)' (pty was initialized
-from fileno 7) or `STDIN'. Useful for debugging.
-
-	$object->send_slow($delay, @strings);
+=item $object->send_slow($delay, @strings);
 
 print each character from each string of @strings one at a time with $delay
 seconds before each character. This is handy for devices such as modems
@@ -353,8 +406,9 @@ and if so update the accumulator for future expect() calls and print the
 output to STDOUT and @listen_group if log_stdout and log_group are
 appropriately set.
 
+=back
 
-Configurable Package Variables:
+=head2 Configurable Package Variables:
 
 	$Expect::Debug;
 
@@ -373,8 +427,10 @@ value of $Expect::Log_Group. See $object->log_group().
 
 	$Expect::Log_Stdout;
 
-	Defaults to 1. Newly created objects have a $object->log_stdout()
-value of $Expect::Log_Stdout. See $object->log_stdout().
+	Defaults to 1 for spawned commands, 0 for file handles
+attached with exp_init(). Newly created objects have a
+$object->log_stdout() value of $Expect::Log_Stdout. See
+$object->log_stdout().
 
 	$Expect::Manual_Stty;
 
@@ -390,7 +446,29 @@ you have this on you can match lines in the middle of a page of output
 using ^ and $ instead of it matching the beginning and end of the entire
 expression. I think this is handy.
 
+=head1 CONTRIBUTIONS
+
+Lee Eakin <leakin@japh.itg.ti.com> has ported the kibitz script
+from Tcl/Expect to Perl/Expect.  You can find it in the examples/
+subdir.  Thanks Lee!
+
+=head1 SEE ALSO
+
+L<Expect_FAQ>
+
 =head1 HOMEPAGE
 
 http://sourceforge.net/projects/expectperl/
+
+=head1 AUTHORS
+
+(c) 1997 Austin Schutz <ASchutz@users.sourceforge.net>
+
+expect() interface & functionality enhancements (c) 1999 Roland Giersig.
+
+This module now is maintained by Roland Giersig <RGiersig@cpan.org>
+
+=head1 LICENSE
+
+This module can be used under the same terms as Perl.
 
