@@ -7,9 +7,9 @@ my $Is_Beta = 1;
 WriteMakefile(
 	      'NAME'	     => 'Expect',
 	      'VERSION_FROM' => 'Expect.pm',
-	      'PREREQ_PM'    => { 'IO::Stty' => '0.02',
-                                  'IO::Tty' => '0.95',
-                                  'IO::Pty' => '0.95',
+	      'PREREQ_PM'    => {
+                                  'IO::Tty' => 0.97,
+                                  'IO::Pty' => 0.97,
 				},
 	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
 	      );

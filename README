@@ -2,9 +2,9 @@
 Expect.pm v1.13
 ===============
 
-Expect requires IO::Tty and IO::Stty, also available from CPAN.  It is
-highly recommended that you also upgrade to the latest IO::Tty (v0.9).
-If you use the highly recommended CPAN module, there is a
+Expect requires the latest version of IO::Tty, also available from
+CPAN.  IO::Stty has become optional but I'd suggest you also install
+it.  If you use the highly recommended CPAN module, there is a
 Bundle::Expect available that installs everything for you.
 
 If you prefer manual installation, the usual
@@ -20,10 +20,9 @@ some external program to use for generating reproducible output that
 is available across all platforms.  Luckily, we can always use perl
 itself...  Contributions to the testsuite are of course welcome.
 
-Note that IO::Tty is very system-dependend.  I have copied a lot from
-the pty-creation code in the Tcl version of Expect and hope that this
-fixes a lot of problems, e.g. with ssh and other programs that ask for
-passwords.
+Note that IO::Tty is very system-dependend.  It has been extensively
+reworked and tested, but there still may be systems that have
+problems.
 
 The Perl Expect module was inspired more by the functionality of
 Tcl/Expect than any previous Expect-like tool such as Comm.pl or
@@ -69,14 +68,13 @@ From the Changes file:
 + split 'new' and 'spawn' to be able to set slave pty params via stty
   before actually spawning the program
 
-+ added slave_pty()
++ added raw_pty()
+
++ added notransfer()
 
 + added print_log_file(), send() now no longer prints to log file or stdout.
 
-+ added alarm to test.pl to avoid blocking on cygwin.
-
-! spawn() now uses IO::Pty spawn, thus exec errors are reported and
-  ssh should work too!
+! spawn() now synchronizes child and parent, so exec errors are reported.
 
 Thanks to everybody who wrote to me, either with bug reports or
 enhancement suggestions!
@@ -84,4 +82,4 @@ enhancement suggestions!
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2001-10-30
+2002-02-26

@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.13_06 BETA
+1.13_07 BETA
 
 =head1 SYNOPSIS
 
@@ -19,7 +19,7 @@ Expect.pm - Expect for Perl
 
   # if you prefer the OO mindset:
   my $exp = new Expect;
-  $exp->slave_pty->stty("raw");  
+  $exp->raw_pty(1);  
   $exp->spawn($command, @parameters)
     or die "Cannot spawn $command: $!\n";
 
@@ -53,16 +53,19 @@ without operator assistance. This concept makes more sense if you are
 already familiar with the versatile Tcl version of Expect.
 The public functions that make up Expect.pm are:
 
+  Expect->new()
   Expect::interconnect(@objects_to_be_read_from)
   Expect::test_handles($timeout, @objects_to_test)
   Expect::version($version_requested | undef);
+  $object->spawn(@command)
   $object->clear_accum()
   $object->set_accum($value)
   $object->debug($debug_level)
-  $object->exp_internal(0 | 1 | undef)
-  $object->notransfer(0 | 1 | undef)
+  $object->exp_internal(0 | 1)
+  $object->notransfer(0 | 1)
+  $object->raw_pty(0 | 1)
   $object->stty(@stty_modes) # See the IO::Stty docs
-  $object->slave_pty()
+  $object->slave()
   $object->before();
   $object->match();
   $object->after();
@@ -120,7 +123,9 @@ Expect without forcing Tcl on the victim programmer :-) .
 
 Creates a new Expect object, i.e. a pty.  You can change parameters on
 it before actually spawning a command.  This is important if you want
-to modify the terminal settings for the slave.  See slave_pty() below.
+to modify the terminal settings for the slave.  See slave() below.
+The object returned is actually a reblessed IO::Pty filehandle, so see
+there for additional methods.
 
 
 =item Expect->exp_init(\*FILEHANDLE) I<or>
@@ -146,7 +151,7 @@ Note that if spawn cannot exec() the given command, the Expect object
 is still valid and the next expect() will see "Cannot exec", so you
 can use that for error handling.
 
-
+ 
 =item $object->debug(0 | 1 | 2 | 3 | undef)
 
 Sets debug level for $object. 1 refers to general debugging
@@ -172,20 +177,27 @@ without parameters. It is highly recommended that you make use of the
 debugging features lest you have angry code.
 
 
+=item $object->raw_pty(1 | 0)
+
+Set pty to raw mode before spawning.  This disables echoing and CR->LF
+translation and gives a more pipe-like behaviour.  Note that this must
+be set I<before> spawning the program.
+
+
 =item $object->stty(qw(mode1 mode2...))
 
-Sets the tty mode for $object's associated terminal to the given modes. Note
-that on many systems the master side of the pty is not a tty, so you
-have to modify the slave pty instead, see next item.
+Sets the tty mode for $object's associated terminal to the given
+modes.  Note that on many systems the master side of the pty is not a
+tty, so you have to modify the slave pty instead, see next item.  This
+needs IO::Stty installed, which is no longer required.
 
 
-=item $object->slave_pty()
+=item $object->slave()
 
 Returns a filehandle to the slave part of the pty.  Very useful in modifying
 the terminal settings:
 
-  # requires IO::Tty v0.06 or higher!!
-  $object->slave_pty->stty(qw(raw -echo));
+  $object->slave->stty(qw(raw -echo));
 
 Typical values are 'sane', 'raw', and 'raw -echo'.  Note that I
 recommend setting the terminal to 'raw' or 'raw -echo', as this avoids
@@ -764,7 +776,7 @@ cleaner for communication between two programs (no more unexpected
 character translations).  Unfortunately this would break a lot of old
 code that sends "\r" to the program instead of "\n" (translating this
 is also handled by the pty), so I won't add this to Expect just like that.
-But feel free to experiment with C<$exp-E<gt>slave_pty-E<gt>stty("raw")>.
+But feel free to experiment with C<$exp-E<gt>raw_pty(1)>.
 
 
 =head2 My script fails from time to time without any obvious reason.  It seems that I am sometimes loosing output from the spawned program.
@@ -871,13 +883,6 @@ do a 'perl Makefile.PL; make; make test; uname C<-a>' and send me the
 results and I'll see what I can deduce from that.
 
 
-=head2 I get a "Could not assign a pty" error when running as a non-root user on an IRIX box?
-
-The OS may not be configured to grant additional pty's (pseudo terminals)
-to non-root users.  /usr/sbin/mkpts should be 4755, not 700 for this
-to work.  I don't know about security implications if you do this.
-
-
 =head2 I just want to read the output of a process without expect()ing anything. How can I do this?
 
 [ Are you sure you need Expect for this?  How about qx() or open("prog|")? ]
@@ -939,20 +944,6 @@ available in the accumulator, so you can grab it using
 $process->exp_before().
 
 
-=head2 How come Expect.pm doesn't run properly under old HP-UX?
-
-There seems to be a problem in IO::Tty. More to the point, HP-UX. When a
-process dies the parent end of it's tty does not receive an EOF, or so I have
-been told. I do not have a machine to test this on.
-
-One possible solution is when you spawn a process, follow it with a
-unique string that would indicate the process is finished.
-
-  $process = Expect->spawn('telnet somehost; echo ____END____');
-
-And then $process->expect($timeout,'____END____','other','patterns');
-
-
 =head2 How come occasionally my script will stop functioning under *BSD?
 
 What appears to happen is that ptys are getting reused before they 
@@ -987,17 +978,75 @@ pty works much like a pipe and is more WYGIWYE (what you get is what
 you expect), so I suggest you set it to 'raw' by yourself:
 
   $exp = new Expect;
-  $exp->slave_pty->stty(qw(raw));
+  $exp->raw_pty(1);
   $exp->spawn(...);
 
 To disable echo:
 
-  $exp->slave_pty->stty(qw(-echo));
+  $exp->slave->stty(qw(-echo));
+
+
+=head2 I'm spawning a telnet/ssh session and then let the user interact with it.  But screen-oriented applications on the other side don't work properly.
+
+You have to set the terminal screen size for that.  Luckily, IO::Pty
+already has a method for that, so modify your code to look like this:
+
+  my $exp = new Expect;
+  $exp->slave->clone_winsize_from(\*STDIN);
+  $exp->spawn("telnet somehost);
+
+Also, some applications need the TERM shell variable set so they know
+how to move the cursor across the screen.  When logging in, the remote
+shell sends a query (Ctrl-Z I think) and expects the terminal to
+answer with a string, e.g. 'xterm'.  If you really want to go that way
+(be aware, madness lies at its end), you can handle that and send back
+the value in $ENV{TERM}.  This is only a hand-waving explanation,
+please figure out the details by yourself.
+
+
+=head2 I set the terminal size as explained above, but if I resize the window, the application does not notice this.
+
+You have to catch the signal WINCH ("window size changed"), change the
+terminal size and propagate the signal to the spawned application:
+
+  my $exp = new Expect;
+  $exp->slave->clone_winsize_from(\*STDIN);
+  $exp->spawn("ssh somehost);
+  $SIG{WINCH} = \&winch;
+  
+  sub winch {
+    $exp->slave->clone_winsize_from(\*STDIN);
+    kill WINCH => $exp->pid if $exp->pid;
+    $SIG{WINCH} = \&winch;
+  }
+
+  $exp->interact();
 
 
 =head2 I noticed that the test uses a string that resembles, but not exactly matches, a well-known sentence that contains every character.  What does that mean?
 
 That means you are anal-retentive. :-)  [Gotcha there!]
+
+
+=head2 I get a "Could not assign a pty" error when running as a non-root user on an IRIX box?
+
+The OS may not be configured to grant additional pty's (pseudo terminals)
+to non-root users.  /usr/sbin/mkpts should be 4755, not 700 for this
+to work.  I don't know about security implications if you do this.
+
+
+=head2 How come Expect.pm doesn't run properly under old HP-UX?
+
+There seems to be a problem in IO::Tty. More to the point, HP-UX. When a
+process dies the parent end of it's tty does not receive an EOF, or so I have
+been told. I do not have a machine to test this on.
+
+One possible solution is when you spawn a process, follow it with a
+unique string that would indicate the process is finished.
+
+  $process = Expect->spawn('telnet somehost; echo ____END____');
+
+And then $process->expect($timeout,'____END____','other','patterns');
 
 
 =head1 Source Examples
@@ -1076,6 +1125,23 @@ That means you are anal-retentive. :-)  [Gotcha there!]
 	);
 
 
+=head2 How to propagate terminal sizes
+
+  my $exp = new Expect;
+  $exp->slave->clone_winsize_from(\*STDIN);
+  $exp->spawn("ssh somehost);
+  $SIG{WINCH} = \&winch;
+  
+  sub winch {
+    $exp->slave->clone_winsize_from(\*STDIN);
+    kill WINCH => $exp->pid if $exp->pid;
+    $SIG{WINCH} = \&winch;
+  }
+
+  $exp->interact();
+
+
+
 =head1 HOMEPAGE
 
 http://sourceforge.net/projects/expectperl/
@@ -1097,7 +1163,7 @@ and
 
 (c) 1997 Austin Schutz E<lt>F<ASchutz@users.sourceforge.net>E<gt> (retired)
 
-expect() interface & functionality enhancements (c) 1999-2001 Roland Giersig.
+expect() interface & functionality enhancements (c) 1999-2002 Roland Giersig.
 
 This module is now maintained by Roland Giersig E<lt>F<RGiersig@cpan.org>E<gt>
 
@@ -1105,5 +1171,30 @@ This module is now maintained by Roland Giersig E<lt>F<RGiersig@cpan.org>E<gt>
 =head1 LICENSE
 
 This module can be used under the same terms as Perl.
+
+
+=head1 DISCLAIMER
+
+THIS SOFTWARE IS PROVIDED ``AS IS'' AND ANY EXPRESS OR IMPLIED
+WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED WARRANTIES OF
+MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE DISCLAIMED.
+IN NO EVENT SHALL THE AUTHORS BE LIABLE FOR ANY DIRECT, INDIRECT,
+INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING,
+BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS
+OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND
+ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR
+TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE
+USE OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH
+DAMAGE.
+
+In other words: Use at your own risk.  Provided as is.  Your mileage
+may vary.  Read the source, Luke!
+
+And finally, just to be sure:
+
+Any Use of This Product, in Any Manner Whatsoever, Will Increase the
+Amount of Disorder in the Universe. Although No Liability Is Implied
+Herein, the Consumer Is Warned That This Process Will Ultimately Lead
+to the Heat Death of the Universe.
 
 =cut

@@ -186,12 +186,14 @@ Expect v1.13
 
 + added slave_pty()
 
-+ added print_log_file(), send() now no longer prints to log file or stdout.
++ added print_log_file(), send() now no longer prints to log file or
+  stdout.
 
 + added alarm to test.pl to avoid blocking on cygwin.
 
 ! spawn() now uses IO::Pty spawn, thus exec errors are reported and
   ssh should work too!
+
 
 Expect v1.13_06
 ===============
@@ -200,8 +202,22 @@ Expect v1.13_06
 
 + rearranged and changed tests to better suit the various systems
 
-+ added rudimentary 'notransfer' option; global only, not on per-pattern-basis
++ added rudimentary 'notransfer' option; global only, not on
+  per-pattern-basis; workaround available in FAQ
 
 + timeout handlers now also can exp_continue
 
 + added 'raw_pty' option, also setting master to raw if isatty()
+
+
+Expect v1.13_07
+===============
+
++ added and corrected test for exit status; got rid of Test.pm
+
+! use 'set_raw' instead of stty("raw"); IO::Stty now optional
+
++ updated docs & FAQs; explained how terminal sizes and SIGWINCH
+  should be propagated
+
+

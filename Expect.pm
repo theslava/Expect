@@ -19,8 +19,8 @@ use 5;				# 4 won't cut it.
 
 package Expect;
 
-use IO::Pty 0.94;		# We need make_slave_controlling_terminal()
-use IO::Stty;
+use IO::Pty 0.97;		# We need make_slave_controlling_terminal()
+use IO::Tty;
 
 use strict 'refs';
 use strict 'vars';
@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_06";
+  $Expect::VERSION = "1.13_07";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -55,16 +55,6 @@ BEGIN {
   %Expect::Spawned_PIDs = ();
 }
 
-# propagate SIGWINCH to children; but we need to also propagate terminal
-# size changes, so this is work to do.
-#$SIG{WINCH} = sub {
-#  my @pids = keys %Expect::Spawned_PIDs;
-#  print STDERR "SIGWINCH received, propagating to @pids\r\n";
-#  if (@pids) {
-#    kill WINCH => @pids;
-#  }
-#};
-
 sub version {
   my($version) = shift;
   warn "Version $version is later than $Expect::VERSION. It may not be supported" if (defined ($version) && ($version > $Expect::VERSION));
@@ -80,8 +70,7 @@ sub new {
 
   # Create the pty which we will use to pass process info.
   my($self) = new IO::Pty;
-  my $name_of_tty = $self->ttyname();
-  die "$class: Could not assign a pty" unless $name_of_tty;
+  die "$class: Could not assign a pty" unless $self;
   bless $self => $class;
   $self->autoflush(1);
 
@@ -127,7 +116,7 @@ sub spawn {
     ${*$self}{exp_Pid} = $pid;
     close STAT_WTR;
     $self->close_slave();
-    $self->stty("raw") if $self->raw_pty and isatty($self);
+    $self->set_raw() if $self->raw_pty and isatty($self);
 
     # now wait for child exec (eof due to close-on-exit) or exec error
     my $errstatus = sysread(STAT_RDR, $errno, 256);
@@ -143,12 +132,11 @@ sub spawn {
     # child
     close STAT_RDR;
 
-    $self->make_slave_controlling_terminal()
-      or die "Cannot make slave controlling terminal: $!";
+    $self->make_slave_controlling_terminal();
     my $slv = $self->slave()
       or die "Cannot get slave: $!";
 
-    $slv->stty("raw") if $self->raw_pty;
+    $slv->set_raw() if $self->raw_pty;
     close($self);
     close(STDIN);
     open(STDIN,"<&". $slv->fileno())
@@ -368,19 +356,27 @@ sub log_file {
 # Previously this was calling `stty`, in a most bastardized manner.
 sub exp_stty {
   my($self) = shift;
-  my($mode) = shift;
+  my($mode) = "@_";
+  
   return undef unless defined($mode);
+  if (not defined $INC{"IO/Stty.pm"}) {
+    carp "IO::Stty not installed, cannot change mode";
+    return undef;
+  }
+
   if (${*$self}{"exp_Debug"}) {
     print STDERR "Setting ${*$self}{exp_Pty_Handle} to tty mode '$mode'\r\n";
   }
   unless (POSIX::isatty($self)) {
     if (${*$self}{"exp_Debug"} or $^W) {
-      warn "${*$self}{exp_Pty_Handle} is not a tty. Not changing mode\r\n";
+      warn "${*$self}{exp_Pty_Handle} is not a tty. Not changing mode";
     }
     return '';			# No undef to avoid warnings elsewhere.
   }
-  IO::Stty::stty($self,split(/\s/,$mode));
+  IO::Stty::stty($self, split(/\s/,$mode));
 }
+
+*stty = \&exp_stty;
 
 # If we want to clear the buffer. Otherwise Accum will grow during send_slow
 # etc. and contain the remainder after matches.
@@ -787,7 +783,7 @@ sub _multi_expect($$@) {
 	    $ret = &{$timeout_hook->[3]}($_[0]->[0]);
 	  }
 	}
-	if ($ret eq exp_continue) {
+	if ($ret and $ret eq exp_continue) {
 	  $start_loop_time = time();	# restart timeout count
 	  next READLOOP;
 	}

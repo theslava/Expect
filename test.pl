@@ -1,12 +1,28 @@
 
 use strict;
 $^W = 1;			# warnings too
-use Test;
-use Config;
+
+my ($testnr, $maxnr, $oknr);
+
+BEGIN { $testnr = 1; $maxnr = 34; print "$testnr..$maxnr\n"; }
+sub ok ($) {
+  if ($_[0]) {
+    print "ok ", $testnr++, "\n";
+    $oknr++;
+    return 1;
+  } else {
+    print "not ok ", $testnr++, "\n";
+    my ($package, $filename, $line) = caller;
+    print "# Test failed at $filename line $line.\n";
+    return undef;
+  }
+}
+
+sub fatal($) {
+  ok(shift) or die;
+}
 
 my $Perl = $^X;
-
-BEGIN { plan tests => 32 }
 
 use Expect;
 #$Expect::Exp_Internal = 1;
@@ -16,11 +32,11 @@ print "\nBasic tests...\n\n";
 
 {
   my $exp = Expect->spawn("$Perl -v");
-  ok(defined $exp);
+  fatal(defined $exp);
   $exp->log_user(0);
-  ok($exp->expect(10, "krzlbrtz", "Copyright") == 2);
-  ok($exp->expect(10, "Larry Wall", "krzlbrtz") == 1);
-  ok(not $exp->expect(3, "Copyright"));
+  fatal($exp->expect(10, "krzlbrtz", "Copyright") == 2);
+  fatal($exp->expect(10, "Larry Wall", "krzlbrtz") == 1);
+  fatal(not $exp->expect(3, "Copyright"));
 }
 
 print "\nTesting exec failure...\n\n";
@@ -30,7 +46,7 @@ print "\nTesting exec failure...\n\n";
   ok(defined $exp);
   $exp->log_stdout(0);
   $! = 0;
-  ok(not defined $exp->spawn("Ignore_This_Error_Its_A_Test__efluna3w6868tn8"));
+  fatal(not defined $exp->spawn("Ignore_This_Error_Its_A_Test__efluna3w6868tn8"));
   ok($!);
   my $res = $exp->expect(20,
 			 [ "Cannot exec" => sub{ ok(1); }],
@@ -167,6 +183,7 @@ _EOT_
   $SIG{ALRM} = sub { die "TIMEOUT on send" };
 
   foreach my $len (1 .. length($randstring)) {
+    print "$len\r";
     my $s = substr($randstring, 0, $len);
     my $rev = scalar reverse $s;
     eval {
@@ -195,7 +212,7 @@ _EOT_
 
 # Now test for the max. line length. Some systems are limited to ~255
 # chars per line, after which they start loosing characters.  As Cygwin 
-# then hangs and cannot be freed via alarm, we only test up to 250 characters
+# then hangs and cannot be freed via alarm, we only test up to 160 characters
 # to avoid that.
 
 {
@@ -203,10 +220,11 @@ _EOT_
     or die "Cannot spawn $Perl: $!\n";
 
   $exp->log_stdout(0);
-  my $randstring = 'Fakjdf ijj845jtirg8e 4jy8 gfuoyhjgt8h gues9845th guoaeh gt98hae 45t8u ha8rhg ue4ht 8eh tgo8he4 t8 gfj aoingf9a8hgf uain dgkjadshftuehgfusand987vgh afugh 8h 98H 97BH 7HG zG 86G (&g (O/g &(GF(/EG F78G F87SG F(/G F(/a slkf ksdheq@f jkahsd fjkh%&/"§ä#üßw';
+  my $randstring = 'Fakjdf ijj845jtirg8 gfuoyhjgt8h gues9845th guoaeh gt9vgh afugh 8h 98H 97BH 7HG zG 86G (&g (O/g &(GF(/EG F78G F87SG F(/G F(/a slkf ksdheq@f jkahsd fjkh%&/"§ä#üßw';
   my $maxlen;
   my $exitloop;
   foreach my $len (1 .. length($randstring)) {
+    print "$len\r";
     my $s = substr($randstring, 0, $len);
     my $rev = scalar reverse $s;
     eval {
@@ -261,27 +279,60 @@ _EOT_
 print "\nChecking if exit status is returned correctly...\n\n";
 
 {
-  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; kill 3, $$;'});
+  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; exit(42);'});
   $exp->expect(10,
                [ qr/^pid:/, sub { my $self = shift; } ],
                [ eof => sub { print "eof\n"; } ],
                [ timeout => sub { print "timeout\n";} ],
               );
   my $status = $exp->soft_close();
-  print "soft_close: $status\n";
+  printf "soft_close: 0x%04X\n", $status;
   ok($exp->exitstatus() == $status);
-  ok(($status & 0x7F) == 3);
+  ok((($status >> 8) & 0x7F) == 42);
+}
+
+print "\nChecking if signal exit status is returned correctly...\n\n";
+
+{
+  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; kill 15, $$;'});
+  $exp->expect(10,
+               [ qr/^pid:/, sub { my $self = shift; } ],
+               [ eof => sub { print "eof\n"; } ],
+               [ timeout => sub { print "timeout\n";} ],
+              );
+  my $status = $exp->soft_close();
+  printf "soft_close: 0x%04X\n", $status;
+  ok($exp->exitstatus() == $status);
+  if ($^O =~ m/cygwin|bsd|solaris/i) {
+    # signal number returned as exit status 128 + number
+    $status = ($status >> 8) & 0x7F;
+  } else {
+    # signal number returned in lower 8 bits
+    $status &= 0x7F;
+  }
+  if ($status == 15) {
+    ok(1);
+  } else {
+    print "Sorry, we expected to get 15 but got $status instead.\n";
+    ok(0);
+  }
 }
 
 print "\nChecking if EOF on pty slave is correctly reported to master...\n\n";
 
 {
-  my $exp = new Expect($Perl . q{ -e 'close STDIN; close STDOUT; close STDERR; sleep 4;'});
+  my $exp = new Expect($Perl . q{ -e 'close STDIN; close STDOUT; close STDERR; sleep 3;'});
   $exp->expect(2,
                [ eof => sub { print "EOF\n"; ok(1); } ],
-               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+               [ timeout => sub { print "TIMEOUT\nSorry, you may not notice if the spawned process closes the pty.\n"; ok(0);} ],
               );
   $exp->hard_close();
 }
+
+print "Passed $oknr of $maxnr tests.\n";
+print <<__EOT__ if ($oknr != $maxnr);
+Please scroll back and check which test(s) failed and what comments
+were given.  Expect probably is still completely usable to you!!
+__EOT__
 
 exit(0);
