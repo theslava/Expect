@@ -19,7 +19,7 @@ use 5;				# 4 won't cut it.
 
 package Expect;
 
-use IO::Pty 0.92;		# We rely on a working spawn()
+use IO::Pty 0.94;		# We need make_slave_controlling_terminal()
 use IO::Stty;
 
 use strict 'refs';
@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.13_02";
+  $Expect::VERSION = "1.13_04";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -83,7 +83,6 @@ sub new {
   my $name_of_tty = $self->ttyname();
   die "$class: Could not assign a pty" unless $name_of_tty;
   bless $self => $class;
-  ${*$self}{exp_Slave_Pty} = $self->slave(); # Create slave handle.
   $self->autoflush(1);
 
   # This is defined here since the default is different for
@@ -110,26 +109,76 @@ sub spawn {
 
   my(@cmd) = @_;	# spawn is passed command line args.
   ${*$self}{"exp_Command"} = \@cmd;
-  my $ret = $self->SUPER::spawn(@cmd);
-  if ($ret) {
-    ${*$self}{exp_Pid} = $self->SUPER::slave_pid();
-    # This is sort of for code compatibility, and to make debugging a little
-    # easier. By code compatibility I mean that previously the process's
-    # handle was referenced by $process{Pty_Handle} instead of just $process.
-    # This is almost like 'naming' the handle to the process.
-    # I think this also reflects Tcl Expect-like behavior.
-    ${*$self}{exp_Pty_Handle} = "spawn id(".$self->fileno().")";
-    if ((${*$self}{"exp_Debug"}) or (${*$self}{"exp_Exp_Internal"})) {
-      cluck("Spawned '@cmd'\r\n",
-	    "\t${*$self}{exp_Pty_Handle}\r\n",
-	    "\tPid: ${*$self}{exp_Pid}\r\n",
-	    "\tTty: ".$self->SUPER::ttyname()."\r\n",
-	   );
-    }
-    $Expect::Spawned_PIDs{${*$self}{exp_Pid}} = undef;
-    return $self;
+
+  # set up pipe to detect childs exec error
+  pipe(STAT_RDR, STAT_WTR) or die "Cannot open pipe: $!";
+  STAT_WTR->autoflush(1);
+
+  my $pid = fork;
+
+  unless (defined ($pid)) {
+    warn "Cannot fork: $!" if $^W;
+    return undef;
   }
-  return undef;
+
+  if($pid) {
+    # parent
+    my $errno;
+    ${*$self}{exp_Pid} = $pid;
+    close STAT_WTR;
+    $self->close_slave();
+
+    # now wait for child exec (eof due to close-on-exit) or exec error
+    my $errstatus = sysread(STAT_RDR, $errno, 256);
+    die "Cannot sync with child: $!" if not defined $errstatus;
+    close STAT_RDR;
+    if ($errstatus) {
+      $! = $errno+0;
+      warn "Cannot exec(@cmd): $!\n" if $^W;
+      return undef;
+    }
+  }
+  else {
+    # child
+    close STAT_RDR;
+
+    $self->make_slave_controlling_terminal()
+      or die "Cannot make slave controlling terminal: $!";
+    my $slv = $self->slave()
+      or die "Cannot get slave: $!";
+
+    $slv->stty("raw") if $self->raw_pty;
+    close($self);
+    close(STDIN);
+    open(STDIN,"<&". $slv->fileno())
+      or die "Couldn't reopen STDIN for reading, $!\n";
+    close(STDOUT);
+    open(STDOUT,">&". $slv->fileno())
+      or die "Couldn't reopen STDOUT for writing, $!\n";
+    close(STDERR);
+    open(STDERR,">&". $slv->fileno())
+      or die "Couldn't reopen STDERR for writing, $!\n";
+
+    { exec(@cmd) };
+    print STAT_WTR $!+0;
+    die "Cannot exec(@cmd): $!\n";
+  }
+
+  # This is sort of for code compatibility, and to make debugging a little
+  # easier. By code compatibility I mean that previously the process's
+  # handle was referenced by $process{Pty_Handle} instead of just $process.
+  # This is almost like 'naming' the handle to the process.
+  # I think this also reflects Tcl Expect-like behavior.
+  ${*$self}{exp_Pty_Handle} = "spawn id(".$self->fileno().")";
+  if ((${*$self}{"exp_Debug"}) or (${*$self}{"exp_Exp_Internal"})) {
+    cluck("Spawned '@cmd'\r\n",
+	  "\t${*$self}{exp_Pty_Handle}\r\n",
+	  "\tPid: ${*$self}{exp_Pid}\r\n",
+	  "\tTty: ".$self->SUPER::ttyname()."\r\n",
+	 );
+  }
+  $Expect::Spawned_PIDs{${*$self}{exp_Pid}} = undef;
+  return $self;
 }
 
 
@@ -166,11 +215,13 @@ my %Writeable_Vars = ( debug            => 'exp_Debug',
 		       do_soft_close    => 'exp_Do_Soft_Close',
 		       max_accum        => 'exp_Max_Accum',
 		       match_max        => 'exp_Max_Accum',
+		       notransfer       => 'exp_NoTransfer',
 		       log_stdout       => 'exp_Log_Stdout',
 		       log_user         => 'exp_Log_Stdout',
 		       log_group        => 'exp_Log_Group',
 		       manual_stty      => 'exp_Manual_Stty',
 		       restart_timeout_upon_receive => 'exp_Continue',
+		       raw_pty           => 'exp_Raw_Pty',
 		     );
 my %Readable_Vars = ( pid               => 'exp_Pid',
 		      exp_pid           => 'exp_Pid',
@@ -193,8 +244,6 @@ my %Readable_Vars = ( pid               => 'exp_Pid',
 		      exp_pty_handle    => 'exp_Pty_Handle',
 		      pty_handle        => 'exp_Pty_Handle',
 		      exp_logfile       => 'exp_Log_File',
-		      exp_slave_pty     => 'exp_Slave_Pty',
-		      slave_pty         => 'exp_Slave_Pty',
 		      logfile           => 'exp_Log_File',
 		      %Writeable_Vars,
 		    );
@@ -324,8 +373,8 @@ sub exp_stty {
     print STDERR "Setting ${*$self}{exp_Pty_Handle} to tty mode '$mode'\r\n";
   }
   unless (POSIX::isatty($self)) {
-    if (${*$self}{"exp_Debug"}) {
-      print STDERR "${*$self}{exp_Pty_Handle} is not a tty. Not changing mode\r\n";
+    if (${*$self}{"exp_Debug"} or $^W) {
+      warn "${*$self}{exp_Pty_Handle} is not a tty. Not changing mode\r\n";
     }
     return '';			# No undef to avoid warnings elsewhere.
   }
@@ -640,7 +689,8 @@ sub _multi_expect($$@) {
 	  }
 
 	  if ($exp_matched) {
-	    ${*$exp}{exp_Accum} = $after;
+	    ${*$exp}{exp_Accum} = $after
+	      unless ${*$exp}{exp_NoTransfer};
 	    print STDERR "YES!!\r\n"
 	      if ${*$exp}{exp_Exp_Internal};
 	    print STDERR ("    Before match string: `",
@@ -1401,6 +1451,7 @@ sub _init_vars {
   # Initialize accumulator.
   ${*$self}{exp_Max_Accum} = $Expect::Exp_Max_Accum;
   ${*$self}{exp_Accum} = '';
+  ${*$self}{exp_NoTransfer} = 0;
 
   # create empty expect_before & after lists
   ${*$self}{exp_expect_before_list} = [];

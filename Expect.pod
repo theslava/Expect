@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.13_02
+1.13_04
 
 =head1 SYNOPSIS
 
@@ -158,6 +158,7 @@ functionality of having the _full_ accumulated buffer printed every
 time data is read from an Expect object. This was implemented by
 request. I recommend against using this unless you think you need it
 as it can create quite a quantity of output under some circumstances..
+
 
 =item $object->exp_internal(1 | 0)
 
@@ -423,6 +424,8 @@ group_ will be set to 'raw -echo' for the duration of interconnection.
 Setting $object->manual_stty() will stop this behavior per object.
 The original tty settings will be restored as interconnect exits.
 
+For a generic way to interconnect processes, take a look at L<IPC::Run>.
+
 
 =item Expect::test_handles(@objects)
 
@@ -536,13 +539,21 @@ $Expect::Manual_Stty value (normally 0) when $object is created. If called
 without parameters manual_stty() will return the current manual_stty setting.
 
 
-=item $object->match_max($maximum_buffer_length | undef)
+=item $object->match_max($maximum_buffer_length | undef) I<or>
+
+=item $object->max_accum($maximum_buffer_length | undef)
 
 Set the maximum accumulator size for object. This is useful if you think
 that the accumulator will grow out of hand during expect() calls. Since
 the buffer will be matched by every match_pattern it may get slow if the
 buffer gets too large. Returns current value if called without parameters.
 Not defined by default.
+
+
+=item $object->notransfer(0 | 1)
+
+If set, matched strings will not be deleted from the accumulator.
+Returns current value if called without parameters.  False by default.
 
 
 =item $object->exp_pid() I<or>
@@ -648,6 +659,7 @@ This is a growing collection of things that might help.
 Please send you questions that are not answered here to
 RGiersig@cpan.org
 
+
 =head2 What systems does Expect run on?
 
 Expect itself doesn't have real system dependencies, but the underlying
@@ -665,8 +677,8 @@ See L<IO::Tty> for a list of verified systems.
 Up to now, the answer was 'No', but this has changed.
 
 You still cannot use ActivePerl, but if you use the Cygwin environment
-(http://sourceware.cygnus.com), which brings its own perl, and have
-the latest IO::Tty (v0.05) installed, it should work (feedback
+(http://sources.redhat.com), which brings its own perl, and have
+the latest IO::Tty (v0.05 or later) installed, it should work (feedback
 appreciated).
 
 
@@ -1051,6 +1063,7 @@ and
 expect() interface & functionality enhancements (c) 1999-2001 Roland Giersig.
 
 This module is now maintained by Roland Giersig E<lt>F<RGiersig@cpan.org>E<gt>
+
 
 =head1 LICENSE
 

@@ -6,10 +6,11 @@ use Config;
 
 my $Perl = $^X;
 
-BEGIN { plan tests => 16 }
+BEGIN { plan tests => 18 }
 
 use Expect;
-$Expect::Exp_Internal = 0;
+#$Expect::Exp_Internal = 1;
+#$Expect::Debug = 1;
 
 {
   my $exp = Expect->spawn("$Perl -v");
@@ -29,10 +30,10 @@ $Expect::Exp_Internal = 0;
   ok($!);
   my $res = $exp->expect(20,
 			 [ "Cannot exec" => sub{ ok(1); }],
-			 [ eof => sub{ ok(0) }],
-			 [ timeout => sub{ ok(0) }],
+			 [ eof => sub{ print "EOF\n"; ok(1) }],
+			 [ timeout => sub{ print "TIMEOUT\n"; ok(0) }],
 			);
-  ok(defined $res and $res == 1);
+#  ok(defined $res and $res == 1);
 }
 
 {
@@ -50,20 +51,11 @@ $Expect::Exp_Internal = 0;
   print "isatty(\$exp): ";
   if (POSIX::isatty($exp)) {
     print "YES\n";
-    eval { $exp->stty("raw") or die $!; };
-    warn "\$exp->stty('raw'): $@\n" if $@;
   } else {
     print "NO\n";
   }
 
-  print "isatty(\$exp->slave_pty): ";
-  if (POSIX::isatty($exp->slave_pty)) {
-    print "YES\n";
-    eval { $exp->slave_pty->stty("raw") or die $!; };
-    warn "\$exp->slave_pty->stty('raw'): $@\n" if $@;
-  } else {
-    print "NO\n";
-  }
+  $exp->raw_pty(1);
 
   $exp->spawn("$Perl -ne 'chomp; sleep 0; print scalar reverse, \"\\n\"'")
     or die "Cannot spawn $Perl: $!\n";
@@ -79,6 +71,14 @@ $Expect::Exp_Internal = 0;
 		);
   }
   ok($called >= @Strings);
+
+  print <<_EOT_;
+
+------------------------------------------------------------------------------
+>  The following tests check system-dependend behaviour, so even if some fail,
+>  Expect might still be perfectly usable for you!
+------------------------------------------------------------------------------
+_EOT_
 
   my $randstring = 'fakjdf ijj845jtirg8e 4jy8 gfuoyhjgt8h gues9845th guoaeh gt98hae 45t8u ha8rhg ue4ht 8eh tgo8he4 t8 gfj aoingf9a8hgf uain dgkjadshftuehgfusand987vgh afugh 8h 98H 978H 7HG zG 86G (&g (O/g &(GF(/EG F78G F87SG F(/G F(/a sldjkf hajksdhf jkahsd fjkh asdHJKGDSGFKLZSTRJKSGOSJDFKGHSHGDFJGDSFJKHGSDFHJGSDKFJGSDGFSHJDGFljkhf lakjsdh fkjahs djfk hasjkdh fjklahs dfkjhasdjkf hajksdh fkjah sdjfk hasjkdh fkjashd fjkha sdjkfhehurthuerhtuwe htui eruth ZI AHD BIZA Di7GH )/g98 9 97 86tr(& TA&(t 6t &T 75r 5$R%/4r76 5&/% R79 5 )/&';
   my $maxlen;
@@ -148,7 +148,8 @@ $Expect::Exp_Internal = 0;
 }
 
 {
-  my $exp = new Expect($Perl . q{ -MIO::Handle -e 'open(TTY, "+>/dev/tty") or die "no controlling terminal"; autoflush TTY 1; print TTY "prompt: "; $s = <TTY>; chomp $s; print "got: $s\n"; close TTY; exit 0;'});
+  print "Testing controlling terminal...\n";
+  my $exp = new Expect($Perl . q{ -MIO::Handle -e 'open(TTY, "+>/dev/tty") or die "no controlling terminal"; autoflush TTY 1; print TTY "prompt: "; $s = <TTY>; chomp $s; print "uc: \U$s\n"; close TTY; exit 0;'});
 
   my $pwd = "pAsswOrd";
   $exp->expect(10,
@@ -157,12 +158,12 @@ $Expect::Exp_Internal = 0;
 		   $self->send("$pwd\n");
 		   exp_continue;
 		 } ],
-	       [ qr/^got:\s*(\w+)/, sub {
+	       [ qr/^uc:\s*(\w+)/, sub {
 		   my $self = shift;
 		   my ($s) = $self->matchlist;
 		   chomp $s;
 		   print "match: $s\n";
-		   ok($s eq $pwd);
+		   ok($s eq uc($pwd));
 		 } ],
 	       [ eof => sub {
 		   ok(0); die "EOF";
@@ -172,7 +173,59 @@ $Expect::Exp_Internal = 0;
 		 } ],
 	      );
 }
+
+print "Checking if exit status is returned correctly...\n";
+
+{
+  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; kill 3, $$;'});
+  $exp->expect(10,
+               [ qr/^pid:/, sub { my $self = shift; } ],
+               [ eof => sub { print "eof\n"; } ],
+               [ timeout => sub { print "timeout\n";} ],
+              );
+  my $status = $exp->soft_close();
+  print "soft_close: $status\n";
+  ok($exp->exitstatus() == $status);
+  ok(($status & 0x7F) == 3);
+}
+
+print "Checking if EOF on pty slave is correctly reported to master...\n";
+
+{
+  my $exp = new Expect($Perl . q{ -e 'close STDIN; close STDOUT; close STDERR; sleep 4;'});
+  $exp->expect(2,
+               [ eof => sub { print "EOF\n"; ok(1); } ],
+               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+              );
+  $exp->hard_close();
+}
+
 exit(0);
 
+{
+  my $exp = new Expect($Perl . q{ -e 'print "some string\n"; sleep 5;'});
+  $exp->notransfer(1);
+  $exp->expect(3,
+	       [ qr/some string/ => sub { ok(1); } ],
+               [ eof => sub { print "EOF\n"; ok(0); } ],
+               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+              );
+  $exp->expect(3,
+	       [ qr/some string/ => sub { ok(1); } ],
+               [ eof => sub { print "EOF\n"; ok(0); } ],
+               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+              );
+  sleep(6);
+  $exp->expect(3,
+	       [ qr/some string/ => sub { ok(1); } ],
+               [ eof => sub { print "EOF\n"; ok(1); } ],
+               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+              );
+  $exp->expect(3,
+	       [ qr/some string/ => sub { ok(0); } ],
+               [ eof => sub { print "EOF\n"; ok(1); } ],
+               [ timeout => sub { print "TIMEOUT\n"; ok(0);} ],
+              );
+}
 
-
+exit(0);
