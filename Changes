@@ -87,3 +87,9 @@ ver 1.07 -
 
 ver 1.08 -
 	Added multi-match functionality (see docu)  --Roland
+
+ver 1.09 -
+	Various small bugfixes: exp_before didn't get set on timeout,
+the expect call didn't return on matching EOF, spawn didn't die when
+exec failed, Expect crashed in certain cases.
+

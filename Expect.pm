@@ -33,7 +33,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = "1.08";
+  $Expect::VERSION = "1.09";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -97,6 +97,7 @@ sub spawn {
     open(STDERR,">&". $tty->fileno()) || die "Couldn't redirect STDERR, $!\r\n";
 
     exec (@_);
+    die "Cannot exec `@_': $!\n";
     # End Child.
   }
 
@@ -314,6 +315,7 @@ sub exp_continue_timeout() { 0xBADDEAD }
 sub expect {
   my $self;
   $self = shift if (ref($_[0])); # can also be called as Expect::expect
+  shift if $_[0] eq 'Expect';	# or as Expect->expect
   my $timeout = shift;
   my $timeout_hook = undef;
 
@@ -486,11 +488,11 @@ sub _multi_expect($$@) {
 
   # Set the last loop time to now for time comparisons at end of loop.
   my $start_loop_time = time();
+  my $exp_cont = 1;
 
  READLOOP:
-  while (1) {
+  while ($exp_cont) {
     my $rmask = '';
-    my $exp_cont = '';
     my $time_left = undef;
     if (defined $timeout) {
       $time_left = $timeout - (time() - $start_loop_time);
@@ -616,10 +618,11 @@ sub _multi_expect($$@) {
 		$exp_cont = &{$pattern->[3]}($exp);
 	      }
 	    }
-	    if ($exp_cont == exp_continue
-		or $exp_cont eq 'exp_continue'
-		or $exp_cont eq 'exp_continue_timeout'
-		or $exp_cont == exp_continue_timeout) {
+	    if ($exp_cont and
+		($exp_cont == exp_continue
+		 or $exp_cont eq 'exp_continue'
+		 or $exp_cont eq 'exp_continue_timeout'
+		 or $exp_cont == exp_continue_timeout)) {
 	      if ($exp_cont == exp_continue
 		  or $exp_cont eq 'exp_continue') {
 		print STDERR ("Continuing expect, restarting timeout...\r\n",
@@ -671,8 +674,11 @@ sub _multi_expect($$@) {
 	    ${*$exp}{exp_Before} = $exp->clear_accum();
 	    $err = "2:EOF";
 	    ${*$exp}{exp_Error} = $err;
+	    $exp_cont = undef;
 	    foreach my $eof_pat (grep {$_->[1] eq '-eof'} @{$pat}[1..$#{$pat}]) {
 	      my $ret;
+	      print STDERR ("Calling EOF hook $eof_pat->[3]...\r\n",
+			   ) if ($Expect::Debug);
 	      if ($#{$eof_pat} > 3) {
 		# call with parameters if given
 		$ret = &{$eof_pat->[3]}($exp,
@@ -680,11 +686,12 @@ sub _multi_expect($$@) {
 	      } else {
 		$ret = &{$eof_pat->[3]}($exp);
 	      }
-	      if ($ret == exp_continue
-		  or $ret eq 'exp_continue'
-		  or $ret eq 'exp_continue_timeout'
-		  or $ret == exp_continue_timeout) {
-		$exp_cont = $ret;
+	      if ($ret and
+		  ($ret == exp_continue
+		   or $ret eq 'exp_continue'
+		   or $ret eq 'exp_continue_timeout'
+		   or $ret == exp_continue_timeout) {
+		    $exp_cont = $ret;
 	      }
 	    }
 	    # is it dead?
@@ -723,16 +730,18 @@ sub _multi_expect($$@) {
       }
     }				# end read loop
     $start_loop_time = time()	# restart timeout count
-      if ($exp_cont eq exp_continue or $exp_cont eq 'exp_continue');
+      if ($exp_cont and
+	  ($exp_cont eq exp_continue or $exp_cont eq 'exp_continue'));
   }
   # End READLOOP
 
   # Post loop. Do we have anything?
   # No pattern, no EOF. Did we time out or is the process dead?
-  if (not $exp_matched) {
+  if (not $exp_matched and not $err) {
     $err = "1:TIMEOUT";
     foreach my $pat (@_) {
       foreach my $exp (@{$pat->[0]}) {
+	${*$exp}{exp_Before} = ${*$exp}{exp_Accum};
 	next if not defined $exp->fileno(); # skip already closed
 	${*$exp}{exp_Error} = $err unless ${*$exp}{exp_Error};
       }
@@ -765,7 +774,7 @@ sub _multi_expect($$@) {
 			"\r\n  Error: ${*$exp_matched}{exp_Error}." : '',
 			"\r\n");
       } else {
-	  print STDERR ("Returning from expect with TIMEOUT\r\n");
+	  print STDERR ("Returning from expect with TIMEOUT or EOF\r\n");
       }
     if ($Expect::Debug and $exp_matched) {
       print STDERR "  ${*$exp_matched}{exp_Pty_Handle}: accumulator: `";

@@ -1,0 +1,111 @@
+=head1 NAME
+
+Expect.pm - Frequently Asked Questions
+
+=head1 SYNOPSIS
+
+This is a growing collection of things that might help.
+Please send you questions that are not answered here to
+RGiersig@cpan.org
+
+=head1 DESCRIPTION
+
+=head2 How can I find out what Expect is doing?
+
+If you set
+
+  $Expect::Exp_Internal = 1;
+
+Expect will tell you very verbosely what it is receiving,
+what matching it is trying and what it found.
+
+You can also set
+
+  $Expect::Debug = 1;
+
+which gives you even more output.
+
+=head2 I am seeing the output of the command I spawned.  Can I turn that off?
+
+Yes, just set
+
+  $Expect::Log_Stdout = 0;
+
+=head2 How can I turn off multi-line matching for my regexps?
+
+To globally unset multi-line matching for all regexps:
+
+  $Expect::Multiline_Matching = 0;
+
+You can do that on a per-regexp basis by stating C<(?-m)> inside the regexp
+(you need perl5.00503 or later for that).
+
+=head2 How can I expect on multiple spawned commands?
+
+You can use the B<-i> parameter to specify a single or a list of Expect
+objects.  All following patterns will be evaluated against that list.
+
+You can specify B<-i> multiple times to create groups of objects
+and patterns to mtach against within the same expect statement.
+
+See the source example below.
+
+=head1 Source Examples
+
+=head2 How to automate login
+
+  $obj->expect($timeout,
+	       [
+		qr'login: $',
+		sub {
+		  my $fh = shift;
+		  print $fh "$username\r"; exp_continue;
+		}
+	       ],
+	       [
+		'Password: $',
+		sub {
+		  my $fh = shift;
+		  print $fh "$password\r"; exp_continue;
+		}
+	       ],
+	       [
+		timeout =>
+		sub {
+		  die "No login.\n";
+		}
+	       ],
+	       '-re', qr'[#>:] $', #' wait for shell prompt, then exit expect
+	      );
+
+
+=head2 How to expect on multiple spawned commands
+
+  foreach my $cmd (@list_of_commands) {
+    push @commands, new Expect $cmd;
+  }
+
+  expect($timeout,
+	 '-i', \@commands,
+	 [
+	  qr"pattern",		# find this pattern in output of all commands
+	  sub {
+	    my $obj = shift;	# object that matched
+	    print $obj "something\r";
+	    exp_continue;	# we don't want to terminate the expect call
+	  }
+	 ],
+	 '-i', $some_other_command,
+	 [
+	  "some other pattern",
+	  sub {
+	    my ($obj, $parmref) = @_;
+	    # ...
+
+	    # now we exit the expect command
+	  },
+	  \$parm
+	 ],
+	);
+
+=cut
