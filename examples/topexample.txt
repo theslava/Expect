@@ -1,4 +1,0 @@
-	Pretty straightforward. Log in to a box, run top. Log the output.
-
-	This is basically a demonstration of how to interact with telnet and
-how to use interconnect two throw together a pair of processes.

@@ -1,6 +1,6 @@
 =head1 NAME
 
-Expect.pm (1.01) - Perl Expect interface
+Expect.pm (1.04) - Perl Expect interface
 
 =head1 SYNOPSIS
 
@@ -13,11 +13,11 @@ Expect.pm (1.01) - Perl Expect interface
 The Expect module is a successor of Comm.pl and a descendent of Chat.pl. It
 more closely ressembles the Tcl Expect language than its predecessors. It
 does not contain any of the networking code found in Comm.pl. I suspect this
-would be obsolete anyway given the advent of Socket.pm and external tools
+would be obsolete anyway given the advent of IO::Socket and external tools
 such as netcat.
 
 Expect.pm is an attempt to have more of a switch() & case: feel to make 
-decision processing more fluid. Two separate types of debugging have 
+decision processing more fluid. three separate types of debugging have 
 been implemented to make code production easier.
 
 It is now possible to interconnect multiple file handles (and processes) much
@@ -32,12 +32,13 @@ Expect.pm was designed to be generally portable across Unixes.
 systems as far as I know.
 
 2. The operating system must be POSIX compliant and include the Perl
-5 POSIX.pm module. The Fcntl.pm module is also used.
+5 POSIX.pm module. The Fcntl.pm module is also used. My understanding
+is that there is no POSIX for Microsoft stuff. Bummer.
 
-3. Perl 5.00401 must be used. This module has been tested with 5.001 and
+3. Perl 5.00401+ must be used. This module has been tested with 5.001 and
 5.003 under Linux and SunOS 5 and worked fine, but with the new IO::Pty
 support 5.00401 is required. Expect itself doesn't require this in case
-at some point IO:::Pty should become backwards compatible with earlier versions
+at some point IO::Pty should become backwards compatible with earlier versions
 of Perl.
 
 The old perl 4 Comm.pl was only compatible with SunOS 4 and 5 due to 

@@ -25,7 +25,7 @@ use Fcntl; # For checking file handle settings.
 @Expect::ISA= qw(IO::Pty);
 
 BEGIN {
-  $Expect::VERSION="1.01";
+  $Expect::VERSION="1.04";
   # These are defaults which may be changed per object, or set as
   # the user wishes.
 # This will be unset, since the default behavior differs between 
@@ -35,14 +35,14 @@ BEGIN {
   $Expect::Debug=0;
   $Expect::Exp_Internal=0;
   $Expect::Manual_Stty=0;
-  $Expect::Use_Regexps=1;
+  $Expect::Multiline_Matching=1;
 }
 
 sub version {
   my($version)=shift;
   warn "Version $version is later than $Expect::VERSION. It may not be supported" if (defined ($version) && ($version > $Expect::VERSION));
 
-  die "Versions before .99 are not supported in this release" if ((defined ($version)) && ($version < .99));
+  die "Versions before 1.03 are not supported in this release" if ((defined ($version)) && ($version < 1.03));
   return $Expect::VERSION;
 }
 
@@ -71,33 +71,33 @@ sub spawn {
   unless (${*$self}{exp_Pid}) {
     # Child
     # Create a new 'session', lose controlling terminal.
-    POSIX::setsid() || warn "Couldn't perform setsid. Strange behavior may result.\n Problem: $!\n";
+    POSIX::setsid() || warn "Couldn't perform setsid. Strange behavior may result.\r\n Problem: $!\r\n";
     $tty = $self->IO::Pty::slave(); # Create slave handle.
     $name_of_tty= $tty->ttyname();
     # We have to close everything and then reopen ttyname after to get
     # a controlling terminal.
     close($self);
     close STDIN; close STDOUT; close STDERR;
-    open(STDIN,"<&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for reading, $!\n";
-    open(STDOUT,">&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for writing, $!\n";
-    open(STDERR,">&". fileno(STDOUT)) || die "Couldn't redirect STDERR, $!\n";
+    open(STDIN,"<&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for reading, $!\r\n";
+    open(STDOUT,">&". $tty->fileno()) || die "Couldn't reopen ". $name_of_tty ." for writing, $!\r\n";
+    open(STDERR,">&". fileno(STDOUT)) || die "Couldn't redirect STDERR, $!\r\n";
     exec ($cmd);
 # End Child.
   }
 
 # Parent
 
-  if ((${*$self}{"exp_Debug"})||(${*$self}{"exp_Exp_Internal"})) {
-    print STDERR "Spawned '$cmd'\r\n";
-    print STDERR "\tPid: ${*$self}{exp_Pid}\r\n";
-    print STDERR "\tTty: ".$name_of_tty."\r\n";
-  }
   # This is sort of for code compatibility, and to make debugging a little
   # easier. By code compatibility I mean that previously the process's
   # handle was referenced by $process{Pty_Handle} instead of just $process.
   # This is almost like 'naming' the handle to the process.
   # I think this also reflects Tcl Expect-like behavior.
   ${*$self}{exp_Pty_Handle}="spawn id(".$self->fileno().")";
+  if ((${*$self}{"exp_Debug"})||(${*$self}{"exp_Exp_Internal"})) {
+    print STDERR "Spawned '$cmd' (${*$self}{exp_Pty_Handle})\r\n";
+    print STDERR "\tPid: ${*$self}{exp_Pid}\r\n";
+    print STDERR "\tTty: ".$name_of_tty."\r\n";
+  }
   return $self;
 }
 
@@ -110,12 +110,14 @@ sub exp_init {
   my($self) = shift;
   bless $self, $class;
   die "exp_init not passed a file object, stopped" unless defined($self->fileno());
+  $self->autoflush();
 # Define standard variables.. debug states, etc.
   $self->_init_vars();
   # Turn of logging. By default we don't want crap from a file to get spewed
   # on screen as we read it.
   ${*$self}{exp_Log_Stdout}=0;
   ${*$self}{exp_Pty_Handle}="handle id(".$self->fileno().")";
+  ${*$self}{exp_Pty_Handle}="STDIN" if $self->fileno() == fileno (STDIN);
   print STDERR "Initialized ${*$self}{exp_Pty_Handle}.'\r\n" if ${*$self}{"exp_Debug"};
   return $self;
 }
@@ -153,27 +155,10 @@ sub pid {
   return undef; # This would probably happen anyway.
 }
 
-# This has been modified. Really, it should just go away. This is here
-# so .99 scripts won't fail.
-sub exp_close {
-  my($self)=shift;
-  close($self);
-}
-
-# This is also obsolete.
-sub exp_kill {
-  my ($self)=shift;
-  return undef unless defined (${*$self}{exp_Pid});
-  my($signal)=shift;
-  $signal=POSIX::SIGTERM unless defined($signal);
-  kill ($signal,${*$self}{exp_Pid})
-}
-
 sub set_seq {
   # Set an escape sequence/function combo for a read handle for interconnect.
   # Ex: $read_handle->set_seq('',\&function,\@parameters); 
   my($self)=shift;
-  my($caller)=(caller)[0];
   my($escape_sequence,$function)=(shift,shift);
   ${${*$self}{exp_Function}}{$escape_sequence}=$function;
   if((!defined($function))||($function eq 'undef')) {
@@ -181,7 +166,12 @@ sub set_seq {
   }
   ${${*$self}{exp_Parameters}}{$escape_sequence}=shift;
 # This'll be a joy to execute. :)
-  print STDERR "Escape seq. '"._make_readable($escape_sequence)."' function for ${*$self}{exp_Pty_Handle} set to '${${*$self}{exp_Function}}{$escape_sequence}(".join(',',@_).")'\r\n" if ${*$self}{"exp_Debug"};
+  if ( ${*$self}{"exp_Debug"} ) {
+    print STDERR "Escape seq. '".$escape_sequence;
+    print STDERR "' function for ${*$self}{exp_Pty_Handle} set to '";
+    print STDERR ${${*$self}{exp_Function}}{$escape_sequence};
+    print STDERR "(".join(',',@_).")'\r\n";
+  }
 }
 
 sub set_group {
@@ -207,12 +197,6 @@ sub set_group {
   }
 }
   
-sub use_regexps {
-# Do regular expression matching during expect().
-  my($self)=shift;
-  return ${*$self}{"exp_Use_Regexps"} unless defined($_[0]);
-  ${*$self}{"exp_Use_Regexps"} = shift;
-}
 
 sub manual_stty {
 # Let user do own stty setting. Return the name of the tty to use.
@@ -237,7 +221,13 @@ sub exp_stty {
   my($mode)=shift;
   return undef unless defined($mode);
   if (${*$self}{"exp_Debug"}) {
-    print STDERR "Setting ${*$self}{exp_Pty_Handle} to tty mode '$mode'\n";
+    print STDERR "Setting ${*$self}{exp_Pty_Handle} to tty mode '$mode'\r\n";
+  }
+  unless (POSIX::isatty($self)) {
+    if (${*$self}{"exp_Debug"}) {
+      print STDERR "${*$self}{exp_Pty_Handle} is not a tty. Not changing mode\r\n";
+    }
+    return ''; # No undef to avoid warnings elsewhere.
   }
   IO::Stty::stty($self,split(/\s/,$mode));
 }
@@ -253,176 +243,161 @@ sub clear_accum {
 }
 
 sub expect {
+  # Here's the basic rundown on how the loop algorithm works:
+  # Do loop continuously (while (1) {... )
+  # 1. Test Accumulator for pattern End loop if pattern found.
+  # 2. select() on handle.
+  # 3. End loop if nothing is found (ERR = Timeout).
+  # 4. Add bits found to accumulator.
+  # 5. continue loop if loop_time is undef (loop forever)
+  # 6. Decrement remaining time.
   my ($self)=shift; 
-  my($endtime, @patterns) = @_;
-  my($successful_pattern,$pattern_number)=(0,0);
+  my($loop_time, @patterns) = @_;
+  my($current_time,$last_loop_time);
+  my(@regexp_flags,@temp_patterns); 
+  my($successful_pattern,$pattern_number)=(0,1);
   my($match, $before, $after, $err);
   my($rmask, $nfound, $nread);
-  my($dont_continue,$match_forever);
-  my($no_regexp_match_index,$pattern,$matched_successfully);
-  my($name_of_pty_handle);
-  my($fileno);
-  $match_forever=1 unless defined($endtime);
-  # This makes debugging a little easier.
-  if ($self->fileno() == fileno(STDIN)) {
-    $name_of_pty_handle='STDIN';
-  } else {
-    $name_of_pty_handle=${*$self}{exp_Pty_Handle};
+  my($no_regexp_match_index,$pattern);
+
+  # Let's make a list of patterns wanting to be evaled as regexps.
+  while ( $pattern = shift(@patterns)) {
+    if ( $pattern eq '-re' ) {
+      push (@regexp_flags,1);
+      push (@temp_patterns,shift(@patterns));
+      next;
+    }
+    push (@regexp_flags,0);
+    push (@temp_patterns,$pattern);
   }
-  print STDERR "Beginning expect from $name_of_pty_handle.\r\nAccumulator: '"._trim_length(_make_readable((${*$self}{exp_Accum})))."'\r\n" if ${*$self}{"exp_Debug"};
+  @patterns = @temp_patterns;
 
-  # Flush for log_stdout
-  select((select($self),$|=1)[0]);
-  $|=1;
+  print STDERR "Beginning expect from ${*$self}{exp_Pty_Handle}.\r\nAccumulator: '"._trim_length(_make_readable((${*$self}{exp_Accum})))."'\r\n" if ${*$self}{"exp_Debug"};
 
-  # Let's get the time here so there won't be any inconsistencies between
-  # here and READLOOP.
-  my ($time)=time;
-  print STDERR "Expect timeout time: ".(defined($endtime) ? $endtime : "unlimited" )." seconds.\r\n" if ${*$self}{"exp_Debug"};
+
+  print STDERR "Expect timeout time: ".(defined($loop_time) ? $loop_time : "unlimited" )." seconds.\r\n" if ${*$self}{"exp_Debug"};
   # What happens if we want to go for 0 secs? We do a quick test on what is
   # ready on the handle.
-  $dont_continue = 1 if ((!($match_forever))&&(!($endtime)));
-  $endtime += $time if defined($endtime);
-  print STDERR "expect: Pty=$name_of_pty_handle, time=",time,", endtime=".(defined($endtime) ? $endtime : "undef")."\r\n" if ${*$self}{"exp_Debug"};
+  print STDERR "expect: Pty=${*$self}{exp_Pty_Handle}, time=",time,", loop_time=".(defined($loop_time) ? $loop_time : "undef")."\r\n" if ${*$self}{"exp_Debug"};
 
 # What are we expecting? What do you expect? :-)
   if (${*$self}{"exp_Exp_Internal"}) {
-    print STDERR "Expecting (with";
-    if (!${*$self}{exp_Use_Regexps}) {
-      print STDERR "out";
-    }
-    print STDERR " regexp matching) from $name_of_pty_handle:";
+    print STDERR "Expecting ";
+    print STDERR "from ${*$self}{exp_Pty_Handle}:";
     foreach $pattern (@patterns) {
-      print STDERR " '".$pattern."'";
+      print STDERR ' -re' if $regexp_flags[$pattern_number - 1];
+      print STDERR " '"._make_readable($pattern)."'";
+      $pattern_number++;
     }
     print STDERR "\r\n";
   }
+  $pattern_number = 1;
 
-# Loop until we get a match or time runs out.
+# Set the last loop time to now for time comparisons at the end of the loop.
+$last_loop_time = time();
+# Initialize accumulator.
+${*$self}{exp_Accum} = '' unless defined(${*$self}{exp_Accum});
 READLOOP:
-# Notice we only give ourselves a one second granularity. This could probably
-# change if we wanted to rig an alarm or something like that.
-# Since we allow for instant checks I think it should be okay.
-  while (($match_forever)||($time <= $endtime)) {
+  while (1) {
     # Test for a match first so we can test the current Accum w/out worrying
     # about an EOF.
     if (defined(${*$self}{"exp_Max_Accum"})) {
       ${*$self}{exp_Accum}=_trim_length(${*$self}{exp_Accum},${*$self}{"exp_Max_Accum"});
     }
-    if ( defined(${*$self}{exp_Accum}) && ${*$self}{exp_Accum} ne '' ) {
-      $pattern_number = 1;
-      # Give users visible control chars.
-      if (${*$self}{"exp_Exp_Internal"}) {
-        $_=_trim_length(_make_readable(${*$self}{exp_Accum}));
-        print STDERR "Does '$_'\r\nfrom $name_of_pty_handle match:\r\n";
+    $pattern_number = 1;
+    # Does the user want to watch the patterns?
+    if (${*$self}{"exp_Exp_Internal"}) {
 # This could be huge. We should attempt to do something about this. 
 # Because the output is used for debugging I'm of the opinion that showing
 # smaller amounts if the total is huge should be ok.
+# Thus the 'trim_length'
+      print STDERR "Does '";
+      print STDERR _trim_length(_make_readable(${*$self}{exp_Accum}));
+      print STDERR "'\r\nfrom ${*$self}{exp_Pty_Handle} match:\r\n";
+    }
+    for $pattern ( @patterns ) {
+      if (${*$self}{"exp_Exp_Internal"}) {
+        print STDERR "\tpattern $pattern_number \(";
+        print STDERR '-re ' if $regexp_flags[$pattern_number - 1];
+        print STDERR "'".$pattern."'\)? " ;
       }
-      for $pattern ( @patterns ) {
-        print STDERR "\tpattern $pattern_number \('$pattern'\)? " if (${*$self}{"exp_Exp_Internal"});
-        # Matching exactly
-        if (!${*$self}{exp_Use_Regexps}) {
-          $no_regexp_match_index = index(${*$self}{exp_Accum},$pattern);
-          # We matched if $no_regexp_match_index > -1
-          if ($no_regexp_match_index > -1) {
-            $before = substr(${*$self}{exp_Accum},0,$no_regexp_match_index);
-            $match = substr(${*$self}{exp_Accum},$no_regexp_match_index,
-              length($pattern));
-            $after = substr(${*$self}{exp_Accum},
-              $no_regexp_match_index + length($pattern)) ;
-            $successful_pattern=$pattern_number;
-          }
-        } elsif ( ${*$self}{exp_Accum} =~ $pattern ) {
-          ( $match, $before, $after ) = ( $&, $`, $' );
+      # Matching exactly
+      if (!$regexp_flags[$pattern_number - 1]) {
+        $no_regexp_match_index = index(${*$self}{exp_Accum},$pattern);
+        # We matched if $no_regexp_match_index > -1
+        if ($no_regexp_match_index > -1) {
+          $before = substr(${*$self}{exp_Accum},0,$no_regexp_match_index);
+          $match = substr(${*$self}{exp_Accum},$no_regexp_match_index,
+            length($pattern));
+          $after = substr(${*$self}{exp_Accum},
+            $no_regexp_match_index + length($pattern)) ;
           $successful_pattern=$pattern_number;
         }
-        if ($successful_pattern) {
-          ${*$self}{exp_Accum} = $after;
-          print STDERR "Yes!\r\n" if (${*$self}{"exp_Exp_Internal"});
-          # The exclamation point makes it stick out. And gets me excited.
-          if ((${*$self}{"exp_Exp_Internal"})||(${*$self}{"exp_Debug"})) {
-            print STDERR "Matched pattern $successful_pattern ";
-            print STDERR "(\'$pattern\')!\r\n";
-            print STDERR "\tBefore match string: '"._trim_length(_make_readable(($`)))."'\r\n";
-            print STDERR "\tMatch string: '"._make_readable($&)."'\r\n";
-            print STDERR "\tAfter match string: '"._trim_length(_make_readable(($')))."'\r\n";
-          }
-  	  last READLOOP;
-        }
-        print STDERR "No.\r\n" if (${*$self}{"exp_Exp_Internal"});
-        $pattern_number++; 
+      } elsif ( ($Expect::Multiline_Matching) && 
+      (${*$self}{exp_Accum} =~ /$pattern/m )) {
+        # Matching regexp
+        ( $match, $before, $after ) = ( $&, $`, $' );
+        $successful_pattern=$pattern_number;
+      } elsif (${*$self}{exp_Accum} =~ /$pattern/ ) {
+        # Matching regexp
+        ( $match, $before, $after ) = ( $&, $`, $' );
+        $successful_pattern=$pattern_number;
       }
+      if ($successful_pattern) {
+        ${*$self}{exp_Accum} = $after;
+        print STDERR "Yes!\r\n" if (${*$self}{"exp_Exp_Internal"});
+        # The exclamation point makes it stick out. And gets me excited.
+        if ((${*$self}{"exp_Exp_Internal"})||(${*$self}{"exp_Debug"})) {
+          print STDERR "Matched pattern $successful_pattern ";
+          print STDERR "(";
+          print STDERR '-re ' if $regexp_flags[$successful_pattern - 1];
+          print STDERR "\'$pattern\')!\r\n";
+          print STDERR "\tBefore match string: '";
+          print STDERR _trim_length(_make_readable(($`)))."'\r\n";
+          print STDERR "\tMatch string: '"._make_readable($&)."'\r\n";
+          print STDERR "\tAfter match string: '";
+          print STDERR _trim_length(_make_readable(($')))."'\r\n";
+        }
+        last READLOOP;
+      }
+      print STDERR "No.\r\n" if (${*$self}{"exp_Exp_Internal"});
+      $pattern_number++; 
     }
-    # End of matching section
+   # End of matching section
 
+    # Read from handle section.
     $rmask = '';
     vec($rmask,$self->fileno(),1) = 1;
-    # Do select for no time if only doing a quick pass.
-    if ($dont_continue) {
-      # Make sure we only go through once.
-#      last READLOOP if ($dont_continue > 1); $dont_continue++;
-      ($nfound, $rmask) = select($rmask, undef, undef, 0);
-# Always go until we don't find something.
-      last READLOOP unless $nfound;
-      # If not found we will exit READLOOP at the end of the section.
-      # We read in 20k for the quick pass. Don't want to miss anything.
-      print STDERR "expect: handle $name_of_pty_handle ready.\r\n" if (${*$self}{"exp_Debug"});
-      $nread = sysread($self, ${*$self}{exp_Pty_Buffer}, 2048);
-      next READLOOP if $nread;# Iterate while we have stuff. 
-    } else {
-      if ($match_forever) {
-        ($nfound) = select($rmask, undef, undef, undef);
-      } else {
-        ($nfound) = select($rmask, undef, undef, $endtime - $time);
-      }
-      # Track time here. One-time-through doesn't care about time.
-      $time = time;
-      # Try to be sure we won't miss anything because of inaccuracies in time 
-      # measurement. Note that durations of less than a second will only
-      # read in twice at the time of first info on the handle.
-      # This is unavoidable because select doesn't return the time left on many
-      # platforms. 
-      if (defined ($endtime) && ($time >= $endtime)) {
-        $time = $endtime;
-        $dont_continue=1; # This generates a one-time-through loop.
-      }
-      last unless $nfound;
-      print STDERR "expect: found ready handle $name_of_pty_handle.\r\n" if (${*$self}{"exp_Debug"} > 1);
-      $nread = sysread($self, ${*$self}{exp_Pty_Buffer}, 2048);
-    }
+    ($nfound) = select($rmask, undef, undef, $loop_time);
+    # go until we don't find something (or time runs out).
+    last READLOOP unless $nfound;
+    print STDERR "expect: handle ${*$self}{exp_Pty_Handle} ready.\r\n" if (${*$self}{"exp_Debug"});
+    # read in what we found.
+    $nread = sysread($self, ${*$self}{exp_Pty_Buffer}, 2048);
+    # Make errors (nread undef) show up as EOF.
     $nread = 0 unless defined ($nread);
-    print STDERR "expect: read $nread byte(s) from $name_of_pty_handle.\r\n" if (${*$self}{"exp_Debug"}>1);
-    if ($nread > 0) {
-      ${*$self}{exp_Accum} .= ${*$self}{exp_Pty_Buffer};
-      # Show the user?
-      $self->_print_handles(${*$self}{exp_Pty_Buffer});
-    } elsif ($nread == 0) {
+    unless ($nread) {
       $before = $self->clear_accum();
       $err = "2:EOF";
       last READLOOP;
-    } else {
-      print STDERR "Got an error reading from $name_of_pty_handle, $!\r\n" if (${*$self}{"exp_Debug"});
-      $before=$self->clear_accum();
-      $err = "4:".$!;
-      last READLOOP;
     }
-    # Last thing: Check to see if the process is dedsky.
-    # for us to be read from the dead process.
-# Sometimes the process is dying before we finish reading.
-#    if (defined(${*$self}{exp_Pid})) {
-#      waitpid(${*$self}{exp_Pid},POSIX::WNOHANG);
-#      if ( !kill( 0, ${*$self}{exp_Pid} ) ) {
-#        $before = $self->clear_accum();
-#        $err = "3:${*$self}{exp_Pty_Handle} died";
-#        last READLOOP;
-#      }
-#    }
-    # Always end here if we're only passing through one time.
+    print STDERR "expect: read $nread byte(s) from ${*$self}{exp_Pty_Handle}.\r\n" if (${*$self}{"exp_Debug"}>1);
+    ${*$self}{exp_Accum} .= ${*$self}{exp_Pty_Buffer};
+    $self->_print_handles(${*$self}{exp_Pty_Buffer});
+    # End handle reading section.
+
+    # Adjust remaining time. Skip this if loop_time = undef.
+    next READLOOP unless defined ($loop_time);
+    $current_time = time();
+    $loop_time -= ($current_time - $last_loop_time);
+    # Case: t < 0, t == 0 , t < 1
+    $loop_time = 0 if $loop_time < 1;
+    $last_loop_time = $current_time;
   }
 # End READLOOP
 
-# We're finished reading in. Have we matched anything?
+  # Post loop. Do we have anything?
+  # No pattern, no EOF. Did we time out or is the process dead?
   if ((!$successful_pattern) && (!$err)) {
     $before = ${*$self}{exp_Accum};
     # is it dead?
@@ -436,23 +411,32 @@ READLOOP:
     $err = "1:TIMEOUT" unless $err;
   }
 
-  if ($err) {
-    $matched_successfully = "unsuccessfully: $err"
-  } else {
-    $matched_successfully = "successfully";
+  # Tell us status
+  if ( ${*$self}{"exp_Debug"} || ${*$self}{exp_Exp_Internal} ) {
+    print STDERR "Returning from expect ";
+    print STDERR ( $err ? 'un' : '' );
+    print STDERR "successfully.";
+    print STDERR ( $err ? " Error: $err." : '' )."\r\n";
+    if (${*$self}{"exp_Debug"}) {
+        print STDERR "Accumulator: '";
+      if ($err) {
+        print STDERR _trim_length(_make_readable($before))."'\r\n";
+      } else {
+        print STDERR _trim_length(_make_readable(${*$self}{exp_Accum}))."'\r\n";
+      }
+    }
   }
-  print STDERR "Returning from expect $matched_successfully.\r\n" if ${*$self}{"exp_Debug"} || ${*$self}{exp_Exp_Internal};
-  unless($err) {
-    print STDERR "Accumulator: '"._trim_length(_make_readable(${*$self}{exp_Accum}))."'\r\n" if ${*$self}{"exp_Debug"};
-  } else {
-    print STDERR "Accumulator: '"._trim_length(_make_readable($before))."'\r\n" if ${*$self}{"exp_Debug"};
-  }
+
   $successful_pattern = undef if $err; # Sanity check
+  # If the index in to the pattern array is 0 we want expect to return
+  # The index number but also true for comparisons.
+  if (defined($successful_pattern) && ($successful_pattern == 0)) {
+    $successful_pattern = "0 but true";
+  }
   if ( wantarray ) {
     return ( $successful_pattern, $err, $match, $before, $after );
-  } else {
-    return $successful_pattern;
   }
+  return $successful_pattern;
 }
 
 # $process->interact([$in_handle],[$escape sequence])
@@ -532,7 +516,6 @@ sub interconnect {
     # doing something like $temp_mask='' unless defined ($temp_mask)
     # has no effect whatsoever. This may be a bug in 5.001.
     $read_mask= $read_mask | $temp_mask;
-    select((select($handle),$|=1)[0]);
   }
   if($Expect::Debug) {
     print STDERR "Read handles:\r\n";
@@ -596,7 +579,6 @@ CONNECT_LOOP:
       if ($bits[$read_handle->fileno()]) {
         $nread=sysread( $read_handle, ${*$read_handle}{exp_Pty_Buffer}, 1024 );
         # Appease perl -w
-        ${*$read_handle}{"exp_Debug"}=0 unless defined (${*$read_handle}{"exp_Debug"});
         $nread = 0 unless defined ($nread);
         print STDERR "interconnect: read $nread byte(s) from ${*$read_handle}{exp_Pty_Handle}.\r\n" if ${*$read_handle}{"exp_Debug"}>1;
         # Test for escape seq. before printing.
@@ -677,8 +659,6 @@ sub send_slow{
   my($char,@linechars,$nfound,$rmask);
   my($sleep_time)=shift;
 # Flushing makes it so each character can be seen separately.
-  select((select($self),$|=1)[0]);
-  $|=1;
   while ($_=shift) {
     @linechars = split ('');
     foreach $char (@linechars) {
@@ -733,6 +713,134 @@ sub test_handles {
   }
   return (@return_list);
 }
+
+# Be nice close. This should emulate what an interactive shell does after a
+# command finishes... sort of. We're not as patient as a shell.
+sub soft_close {
+  my($self) = shift;
+  my($nfound,$nread,$rmask,$returned_pid);
+  my($end_time,$select_time,$temp_buffer);
+  my($close_status);
+  # Give it 15 seconds to cough up an eof.
+  print STDERR "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+  $end_time = time() + 15;
+  while ($end_time > time()) {
+    $select_time = $end_time - time();
+    # Sanity check.
+    $select_time = 0 if $select_time < 0;
+    $rmask = '';
+    vec($rmask,$self->fileno(),1)=1;
+    ($nfound) = select($rmask,undef,undef,$select_time);
+    last unless (defined($nfound) && $nfound);
+    $nread = sysread($self,$temp_buffer,8096);
+    # 0 = EOF.
+    unless (defined($nread) && $nread) {
+      print STDERR "Got EOF from ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+      last;
+    }
+    $self->_print_handles($temp_buffer);
+  }
+  if (($end_time <= time()) && ${*$self}{exp_Debug}) {
+    print STDERR "Timed out waiting for an EOF from ${*$self}{exp_Pty_Handle}.\r\n";
+  }
+  if ( ($close_status=$self->close()) && ${*$self}{exp_Debug}) {
+    print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
+  }
+  # quit now if it isn't a process.
+  return $close_status unless defined($self->pid());
+  # Now give it 15 seconds to die.
+  $end_time = time() + 15;
+  while ($end_time > time()) {
+    $returned_pid = waitpid($self->pid(),&WNOHANG);
+    # Stop here if the process dies.
+    if (defined($returned_pid) && $returned_pid) {
+      if (${*$self}{exp_Debug}) {
+        print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
+      }
+      return $?;
+    }
+    sleep 1; # Keep loop nice.
+  }
+  # Send it a term if it isn't dead.
+  if (${*$self}{exp_Debug}) {
+    print STDERR "${*$self}{exp_Pty_Handle} not exiting, sending TERM.\r\n";
+  }
+  kill(15,${*$self}{exp_Pid});
+  # Now to be anal retentive.. wait 15 more seconds for it to die.
+  $end_time = time() + 15;
+  while ($end_time > time()) {
+    $returned_pid = waitpid($self->pid(),&WNOHANG);
+    if (defined($returned_pid) && $returned_pid) {
+      if (${*$self}{exp_Debug}) {
+        print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
+      }
+      return $?;
+    }
+    sleep 1;
+  }
+  # Since this is a 'soft' close, sending it a -9 would be inappropriate.
+  return undef;
+}
+
+# 'Make it go away' close.
+sub hard_close {
+  my($self) = shift;
+  my($nfound,$nread,$rmask,$returned_pid);
+  my($end_time,$select_time,$temp_buffer);
+  my($close_status);
+  print STDERR "Closing ${*$self}{exp_Pty_Handle}.\r\n" if ${*$self}{exp_Debug};
+  # Don't wait for an EOF.
+  if ( ($close_status=$self->close()) && ${*$self}{exp_Debug}) {
+    print STDERR "${*$self}{exp_Pty_Handle} closed.\r\n";
+  }
+  # Return now if handle.
+  return $close_status unless defined($self->pid());
+  # Now give it 5 seconds to die. Less patience here if it won't die.
+  $end_time = time() + 5;
+  while ($end_time > time()) {
+    $returned_pid = waitpid($self->pid(),&WNOHANG);
+    # Stop here if the process dies.
+    if (defined($returned_pid) && $returned_pid) {
+      if (${*$self}{exp_Debug}) {
+        print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
+      }
+      return $?;
+    }
+    sleep 1; # Keep loop nice.
+  }
+  # Send it a term if it isn't dead.
+  if (${*$self}{exp_Debug}) {
+    print STDERR "${*$self}{exp_Pty_Handle} not exiting, sending TERM.\r\n";
+  }
+  kill(15,${*$self}{exp_Pid});
+  # wait 15 more seconds for it to die.
+  $end_time = time() + 15;
+  while ($end_time > time()) {
+    $returned_pid = waitpid($self->pid(),&WNOHANG);
+    if (defined($returned_pid) && $returned_pid) {
+      if (${*$self}{exp_Debug}) {
+        print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
+      }
+      return $?;
+    }
+    sleep 1;
+  }
+  kill(9,${*$self}{exp_Pid});
+  # wait 5 more seconds for it to die.
+  $end_time = time() + 5;
+  while ($end_time > time()) {
+    $returned_pid = waitpid($self->pid(),&WNOHANG);
+    if (defined($returned_pid) && $returned_pid) {
+      if (${*$self}{exp_Debug}) {
+        print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} killed, Status: $?\r\n";
+      }
+      return $?;
+    }
+    sleep 1;
+  }
+  warn "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} is HUNG.\r\n";
+  return undef;
+}
     
 # These should not be called externally.
 
@@ -746,7 +854,6 @@ sub _init_vars {
   ${*$self}{"exp_Exp_Internal"}=$Expect::Exp_Internal;
   ${*$self}{"exp_Manual_Stty"}=$Expect::Manual_Stty;
   ${*$self}{exp_Stored_Stty}='sane';
-  ${*$self}{exp_Use_Regexps}=$Expect::Use_Regexps;
   # sysread doesn't like my or local vars.
   ${*$self}{exp_Pty_Buffer}=''; 
 }
@@ -763,14 +870,10 @@ sub _make_readable {
   s/\0/\\0/g;
   s/\'/\\\'/g; # So we can tell whassa quote and whassa notta quote.
   s/\"/\\\"/g;
-  # Backspace
-  # s/\b/\\b/g; This isn't working too well.
   # Formfeed (does anyone use formfeed?)
   s/\f/\\f/g;
-  # Delete
-  s/\177/'^?'/g;
   # High / low ascii
-  while(/([\200-\377\001-\037])/) {
+  while(/([\177-\377\001-\037])/) {
     my ($equiv)=sprintf("%lo",ord($1));
     while (length ($equiv) < 3) {
       $equiv = '0'.$equiv;
@@ -805,10 +908,8 @@ sub _print_handles {
   my($handle);
   if (${*$self}{exp_Log_Group}) {
     foreach $handle(@{${*$self}{exp_Listen_Group}}) {
-      select((select($handle),$|=1)[0]);
       $print_this='' unless defined ($print_this);
       # Appease perl -w
-      ${*$handle}{"exp_Debug"}=0 unless defined(${*$handle}{"exp_Debug"});
       print STDERR "Printed '"._trim_length(_make_readable($print_this))."' to ${*$handle}{exp_Pty_Handle} from ${*$self}{exp_Pty_Handle}.\r\n" if (${*$handle}{"exp_Debug"}>1);
       print $handle $print_this;
     }
@@ -840,12 +941,5 @@ sub _undef {
 # This is used for the default escape sequence function.
 # w/out the leading & it won't compile.
 }
-
-
-END {
-  # This page intentionally left blank
-  # Actually there was a function in here that I moved. I may need this later.
-}
-
 
 __END__

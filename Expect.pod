@@ -30,10 +30,6 @@ The (current) public functions that make up Expect.pm are:
 	$object->send_slow($delay, @strings_to_send)
 	$object->set_group(@listen_group_objects or undef)
 	$object->set_seq($sequence,\&function,\@parameters);
-	$object->use_regexps(0, 1, or undef)
-	# These are left for backwards compatibility. They are obsolete.
-	$object->exp_kill($signal or undef); 
-	$object->exp_close();
 
 	There are several configurable package variables that affect the behavior of Expect. They are:
 
@@ -42,7 +38,7 @@ The (current) public functions that make up Expect.pm are:
 	$Expect::Log_Group;
 	$Expect::Log_Stdout;
 	$Expect::Manual_Stty;
-	$Expect::Use_Regexps;
+	$Expect::Multiline_Matching;
 
 =head1	DESCRIPTION 
 
@@ -143,12 +139,24 @@ matching and '4:$!' indicating whatever error was set in $ERRNO during the
 last read on $object's handle. All handles indicated by set_group plus STDOUT
 will have all data to come out of $object printed to them during expect() if
 log_group and log_stdout are set.
-	Depending on the value of $object->use_regexps() a match may be made
-if the pattern matches exactly or if it is a substring found in $object's 
-output. It is recommended you set $obects->use_regexps(0) unless you are
-specifically looking for a regular expression.
-unexpected behavior when you look for thing
- 
+	Changed from older versions is the regular expression handling. By
+default now all strings passed to expect() are treated as literals. To match
+a regular expression pass '-re' as a parameter in front of the pattern you want
+to match as a regexp. Example:
+	$object->expect(15, 'match me exactly','-re','match\s+me\s+exactly');
+	This change makes it possible to match literals and regular expressions
+in the same expect() call. 
+	Also new is multiline matching. ^ will now match the beginning of
+lines. Unfortunately, because perl doesn't use $/ in determining where 
+lines break using $ to find the end of a line frequently doesn't work. This
+is because your terminal is returning "\r\n" at the end of every line. One
+way to check for a pattern at the end of a line would be to use \r?$ instead
+of $. Example:
+	Spawning telnet to a host, you might look for the escape character.
+telnet would return to you "\r\nEscape character is '^]'.\r\n". To find
+this you might use $match='^Escape char.*\.\r?$';
+$telnet->expect(10,'-re',$match); 
+
 	$object->interact( C<\*FILEHANDLE, $escape_sequence>)
 
 interact() is essentially a macro for calling interconnect() for
@@ -231,12 +239,6 @@ and if so update the accumulator for future expect() calls and print the
 output to STDOUT and @listen_group if log_stdout and log_group are
 appropriately set.
 
-	$object->use_regexps(0, 1, or undef)
-
-Sets/unsets whether expect() will take arguments as literals to match or
-regular expressions. If set $object will treat all patterns passed to 
-expect() as regular expressions. Defaults upon $object creation to the value
-of $Expect::Use_Regexps, which by default is 1.
 
 Configurable Package Variables:
 
@@ -265,7 +267,11 @@ value of $Expect::Log_Stdout. See $object->log_stdout().
 	Defaults to 0. Newly created objects have a $object->manual_stty()
 value of $Expect::Manual_Stty. See $object->manual_stty().
 
-	$Expect::Use_Regexps;
+	$Expect::Multiline_Matching;
 
-	Defaults to 1. Newly created objects have a $object->use_regexps()
-value of $Expect::Use_Regexps. See $object->use_regexps().
+	Defaults to 1. Affects whether or not expect() uses the /m flag for
+doing regular expression matching. If set to 1 /m is used.
+	This makes a difference when you are trying to match ^ and $. If
+you have this on you can match lines in the middle of a page of output
+using ^ and $ instead of it matching the beginning and end of the entire
+expression. I think this is handy.

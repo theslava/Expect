@@ -47,7 +47,8 @@ ver 1.00 -
 	exp_close no longer sends an exp_kill() to the process. This was kind
 of a dumb thing to do in the first place. Processes should go away after they
 are close()d. In fact, there really isn't any point in using exp_close. Just
-use $process->close();.
+use $process->close();. -This isn't true as of 1.03, where soft and hard close
+were added to help deal with buffering issues.
 ver 1.01 -
 	Dropped process still alive during expect. Sometimes the process dies
 before the handle finishes getting read. Fixed a typo that caused a response
@@ -60,3 +61,18 @@ ojects. everything is internally represented as ${*$process}{exp_variable}
 instead of ${*$process}{variable}. Pids should be checked with 
 $process->pid() now, since $process->{Pid} no longer exists.
 	exp_kill() is obsolete. Use kill($signal,$process->pid()).
+ver 1.02 -
+	Killed the $Expect::Use_Regexps stuff. Changed expect to look for '-re'
+strings indicating the subsequent pattern is to be matched as a regular
+expression.
+ver 1.03 -
+	Reworked expect() to make the code more fluid. Removed ~50 lines of
+cruft. Added soft_close() and hard_close() (see Expect.pod for details).
+ver 1.04 -
+	Made all handles exp_inited autoflush. IO::Pty does the spawned 
+processes for us. All regexp patterns passed to expect() are now 
+multiline matched-- this makes matching ^ work for the beginning of lines.
+Unfortunately due to limitations in perl matching $ as the end of a line
+doesn't work if you are being returned \r\n instead of just \n. In this case
+you can use \r?$ to match the end of a line.
+	exp_stty now checks to make sure the FH is a tty.
