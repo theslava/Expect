@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.14
+1.15
 
 =head1 SYNOPSIS
 
@@ -140,16 +140,22 @@ object.
 
 =item Expect->spawn($command, @parameters) I<or>
 
+=item $object->spawn($command, @parameters) I<or>
+
 =item new Expect ($command, @parameters)
 
 Forks and execs $command. Returns an Expect object upon success or
-undef if the fork was unsuccessful or the command could not be found.
-spawn() passes its parameters unchanged to Perls exec(), so look there
-for detailed semantics.
+C<undef> if the fork was unsuccessful or the command could not be
+found.  spawn() passes its parameters unchanged to Perls exec(), so
+look there for detailed semantics.
 
 Note that if spawn cannot exec() the given command, the Expect object
 is still valid and the next expect() will see "Cannot exec", so you
 can use that for error handling.
+
+Also note that you cannot reuse an object with an already spawned
+command, even if that command has exited.  Sorry, but you have to
+allocate a new object...
 
  
 =item $object->debug(0 | 1 | 2 | 3 | undef)
@@ -677,6 +683,8 @@ Lee Eakin <leakin@japh.itg.ti.com> has ported the kibitz script
 from Tcl/Expect to Perl/Expect.  You can find it in the examples/
 subdir.  Thanks Lee!
 
+Historical notes:
+
 There are still a few lines of code dating back to the inspirational
 Comm.pl and Chat.pl modules without which this would not have been possible.
 Kudos to Eric Arnold <Eric.Arnold@Sun.com> and Randal 'Nuke your NT box with
@@ -786,14 +794,37 @@ is also handled by the pty), so I won't add this to Expect just like that.
 But feel free to experiment with C<$exp-E<gt>raw_pty(1)>.
 
 
+=head2 How do I send control characters to a process?
+
+A: You can send any characters to a process with the print command. To
+represent a control character in Perl, use \c followed by the letter. For
+example, control-G can be represented with "\cG" . Note that this will not
+work if you single-quote your string. So, to send control-C to a process in
+$exp, do:
+
+  print $exp "\cC";
+
+Or, if you prefer:
+
+  $exp->send("\cC");
+
+The ability to include control characters in a string like this is provided
+by Perl, not by Expect.pm . Trying to learn Expect.pm without a thorough
+grounding in Perl can be very daunting. We suggest you look into some of
+the excellent Perl learning material, such as the books _Programming Perl_
+and _Learning Perl_ by O'Reilly, as well as the extensive online Perl
+documentation available through the perldoc command.
+
+
 =head2 My script fails from time to time without any obvious reason.  It seems that I am sometimes loosing output from the spawned program.
 
-Try to add a 'sleep 1' after you spawn() the program.  It could be that
-pty creation on your system is just slow.
+You could be exiting too fast without giving the spawned program
+enough time to finish.  Try adding $exp->soft_close() to terminate the
+program gracefully or do an expect() for 'eof'.
 
-Alternatively, you could be exiting too fast without giving the
-spawned program enough time to finish.  Try adding $exp->soft_close()
-to terminate the program gracefully or expect() for 'eof'.
+Alternatively, try adding a 'sleep 1' after you spawn() the program.
+It could be that pty creation on your system is just slow (but this is
+rather improbable if you are using the latest IO-Tty).
 
 
 =head2 I want to automate password entry for su/ssh/scp/rsh/...
@@ -819,8 +850,9 @@ Expect is useful for automating things that expect to talk to a human,
 where no formal standard applies.  For other tasks that do follow a
 well-defined protocol, there are often better-suited modules that
 already can handle those protocols.  Don't try to do HTTP requests by
-spawning telnet to port 80, use LWP instead.  You don't use a
-screwdriver to hammer in your nails either, or do you?
+spawning telnet to port 80, use LWP instead.  To automate FTP, take a
+look at L<Net::FTP> or C<ncftp> (http://www.ncftp.org).  You don't use
+a screwdriver to hammer in your nails either, or do you?
 
 
 =head2 I want to log the whole session to a file.
@@ -876,9 +908,8 @@ See the source example below.
 =head2 I seem to have problems with ptys!
 
 Well, pty handling is really a black magic, as it is extremely system
-dependend.  I'm thinking about stealing the pty stuff from Tcl/Expect
-(Hi, Don!), as that code looks much more mature than what gets done in
-Expect and/or IO::Tty.  Please be patient, this may take a while...
+dependend.  I have extensively revised IO-Tty, so these problems
+should be gone.
 
 If your system is listed in the "verified" list of IO::Tty, you
 probably have some non-standard setup, e.g. you compiled your
@@ -908,13 +939,13 @@ By using expect without any patterns to match.
 
 =head2  Where's IO::Pty?
 
-Find it on CPAN as IO::Tty, which provides both.
+Find it on CPAN as IO-Tty, which provides both.
 
 
 =head2 How come when I automate the passwd program to change passwords for me passwd dies before changing the password sometimes/every time?
 
 What's happening is you are closing the handle before passwd exits.
-When you close the handle to a process it is sent a signal (SIGPIPE?)
+When you close the handle to a process, it is sent a signal (SIGPIPE?)
 telling it that STDOUT has gone away. The default behavior for
 processes is to die in this circumstance. Two ways you can make this
 not happen are:
@@ -935,7 +966,7 @@ before you continue with processing.
 
 =head2 How come when I try to make a logfile with log_file() or set_group() it doesn't print anything after the last time I run expect()?
 
-Output is only printed to the group when Expect reads from the
+Output is only printed to the logfile/group when Expect reads from the
 process, during expect(), send_slow() and interconnect().
 One way you can force this is to make use of
 
@@ -948,18 +979,7 @@ and
 which will make expect() run with an empty pattern set forever or just
 for an instant to capture the output of $process. The output is
 available in the accumulator, so you can grab it using
-$process->exp_before().
-
-
-=head2 How come occasionally my script will stop functioning under *BSD?
-
-What appears to happen is that ptys are getting reused before they 
-are ready. This causes processes to receive premature
-EOFs. A workaround is to sleep() a few seconds between spawning processes.
-Be sure you soft_close() or hard_close() the process when you are finished.
-
-Also, try IO::Tty v0.05 or newer, which has several fixes and should
-work much better on *BSD systems.
+$process->before().
 
 
 =head2 I seem to have problems with terminal settings, double echoing, etc.
@@ -1042,11 +1062,10 @@ to non-root users.  /usr/sbin/mkpts should be 4755, not 700 for this
 to work.  I don't know about security implications if you do this.
 
 
-=head2 How come Expect.pm doesn't run properly under old HP-UX?
+=head2 How come I don't notice when the spawned process closes its stdin/out/err??
 
-There seems to be a problem in IO::Tty. More to the point, HP-UX. When a
-process dies the parent end of it's tty does not receive an EOF, or so I have
-been told. I do not have a machine to test this on.
+You are probably on one of the systems where the master doesn't get an
+EOF when the slave closes stdin/out/err.
 
 One possible solution is when you spawn a process, follow it with a
 unique string that would indicate the process is finished.

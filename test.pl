@@ -4,7 +4,7 @@ $^W = 1;			# warnings too
 
 my ($testnr, $maxnr, $oknr);
 
-BEGIN { $testnr = 1; $maxnr = 34; print "$testnr..$maxnr\n"; }
+BEGIN { $testnr = 1; $maxnr = 36; print "$testnr..$maxnr\n"; }
 sub ok ($) {
   if ($_[0]) {
     print "ok ", $testnr++, "\n";
@@ -84,6 +84,15 @@ print "\nTesting exp_continue...\n\n";
                [ timeout => sub { $cnt++; ($cnt < 7)? exp_continue : 0;} ],
               );
   ok($cnt > 2 and $cnt < 7);
+  $exp->hard_close();
+}
+
+{
+  # timeout shouldn't destroy accum contents
+  my $exp = new Expect($Perl . q{ -e 'print "some string\n"; sleep (5);' });
+  ok(not defined $exp->expect(1, "NoMaTcH"));
+  my $i = $exp->expect(1, '-re', 'some\s');
+  ok (defined $i and $i == 1);
   $exp->hard_close();
 }
 

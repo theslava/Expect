@@ -227,8 +227,19 @@ Expect v1.13_08
 ! fixed bug in log_file, parameter now gets set to undef.
 
 
-Expect v1.13_10
-===============
+Expect v1.13_10 = v1.14
+=======================
 
 ! fixed select in interconnect, may return -1 if interrupted by signal.
+
+
+Expect v1.15
+============
+
+! fixed bug in _multi_expect, pattern weren't tried against accum due
+  to exp_New_Data not set.
+
+
+
+
 

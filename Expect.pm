@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.14;
+  $Expect::VERSION = 1.15;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -96,6 +96,8 @@ sub spawn {
     $self = $class->new();
   }
 
+  croak "Cannot reuse an object with an already spawned command"
+    if exists ${*$self}{"exp_Command"};
   my(@cmd) = @_;	# spawn is passed command line args.
   ${*$self}{"exp_Command"} = \@cmd;
 
@@ -558,6 +560,7 @@ sub _multi_expect($$@) {
   foreach my $pat (@_) {
     my @patterns = @{$pat}[1..$#{$pat}];
     foreach my $exp (@{$pat->[0]}) {
+      ${*$exp}{exp_New_Data} = 1; # first round we always try to match
       if (exists ${*$exp}{"exp_Max_Accum"} and ${*$exp}{"exp_Max_Accum"}) {
 	${*$exp}{exp_Accum} =
 	  $exp->_trim_length(${*$exp}{exp_Accum},
@@ -835,7 +838,8 @@ sub _multi_expect($$@) {
 	    if (defined(${*$exp}{exp_Pid})) {
 	      my $ret = waitpid(${*$exp}{exp_Pid}, WNOHANG);
 	      if ($ret == ${*$exp}{exp_Pid}) {
-		print STDERR ("${*$exp}{exp_Pty_Handle}: exit($?)\r\n")
+		printf STDERR ("%s: exit(0x%02X)\r\n", 
+			       ${*$exp}{exp_Pty_Handle}, $?)
 		  if ($Expect::Debug);
 		$err = "3:Child PID ${*$exp}{exp_Pid} exited with status $?";
 		${*$exp}{exp_Error} = $err;
@@ -1339,7 +1343,8 @@ sub soft_close {
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
-	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
+	printf STDERR ("Pid %d of %s exited, Status: 0x%02X\r\n",
+		       ${*$self}{exp_Pid}, ${*$self}{exp_Pty_Handle}, $?);
       }
       ${*$self}{exp_Pid} = undef;
       ${*$self}{exp_Exit} = $?;
@@ -1359,7 +1364,8 @@ sub soft_close {
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
-	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
+	printf STDERR ("Pid %d of %s terminated, Status: 0x%02X\r\n",
+		       ${*$self}{exp_Pid}, ${*$self}{exp_Pty_Handle}, $?);
       }
       ${*$self}{exp_Pid} = undef;
       ${*$self}{exp_Exit} = $?;
@@ -1392,7 +1398,8 @@ sub hard_close {
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
-	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} exited, Status: $?\r\n";
+	printf STDERR ("Pid %d of %s terminated, Status: 0x%02X\r\n",
+		       ${*$self}{exp_Pid}, ${*$self}{exp_Pty_Handle}, $?);
       }
       ${*$self}{exp_Pid} = undef;
       ${*$self}{exp_Exit} = $?;
@@ -1412,7 +1419,8 @@ sub hard_close {
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
-	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} terminated, Status: $?\r\n";
+	printf STDERR ("Pid %d of %s terminated, Status: 0x%02X\r\n",
+		       ${*$self}{exp_Pid}, ${*$self}{exp_Pty_Handle}, $?);
       }
       ${*$self}{exp_Pid} = undef;
       ${*$self}{exp_Exit} = $?;
@@ -1428,7 +1436,8 @@ sub hard_close {
     if (defined($returned_pid) && $returned_pid) {
       delete $Expect::Spawned_PIDs{$returned_pid};
       if (${*$self}{exp_Debug}) {
-	print STDERR "Pid ${*$self}{exp_Pid} of ${*$self}{exp_Pty_Handle} killed, Status: $?\r\n";
+	printf STDERR ("Pid %d of %s killed, Status: 0x%02X\r\n",
+		       ${*$self}{exp_Pid}, ${*$self}{exp_Pty_Handle}, $?);
       }
       ${*$self}{exp_Pid} = undef;
       ${*$self}{exp_Exit} = $?;
