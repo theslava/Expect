@@ -151,3 +151,22 @@ Expect v1.11
 
   (suggested by horos@earth.he.net)
 
+
+Expect v1.12
+============
+
+! exp_Max_Accum didn't work for interact.
+
+- removed soft_close() from DESTROY.  Being overly nice to a doomed process
+  doesn't pay off.  Old behaviour is available via
+  $Expect::Do_Soft_Close = 1;
+
+! cleanup of log and exp_internal output
+
++ added various aliases for functions starting with 'exp_'
+
+! moved FAQ and intro into the main pod as I got the impression
+  that many users didn't bother to read all the documentation
+  or didn't know that it was there.
+
++ added a hook for log_file: can be set to a code ref.
