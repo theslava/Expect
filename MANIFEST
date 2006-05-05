@@ -19,3 +19,4 @@ examples/kibitz/Changelog
 examples/kibitz/README
 examples/kibitz/kibitz
 examples/kibitz/kibitz.man
+META.yml                                 Module meta-data (added by MakeMaker)

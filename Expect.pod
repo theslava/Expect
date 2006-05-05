@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.15
+1.16
 
 =head1 SYNOPSIS
 
@@ -14,7 +14,7 @@ Expect.pm - Expect for Perl
   my $exp = Expect->spawn($command, @params)
     or die "Cannot spawn $command: $!\n";
 
-  # or by using an already opened filehandle
+  # or by using an already opened filehandle (e.g. from Net::Telnet)
   my $exp = Expect->exp_init(\*FILEHANDLE);
 
   # if you prefer the OO mindset:
@@ -186,8 +186,9 @@ debugging features lest you have angry code.
 =item $object->raw_pty(1 | 0)
 
 Set pty to raw mode before spawning.  This disables echoing and CR->LF
-translation and gives a more pipe-like behaviour.  Note that this must
-be set I<before> spawning the program.
+translation and gives a more pipe-like behaviour (which is important
+if you want to transfer binary content).  Note that this must
+be set I<before> spawning the program. 
 
 
 =item $object->stty(qw(mode1 mode2...))
@@ -243,9 +244,12 @@ or, more like Tcl/Expect,
 I<Simple interface:>
 
 Given $timeout in seconds Expect will wait for $object's handle to produce
-one of the match_patterns. Due to o/s limitations $timeout should be a round
-number. If $timeout is 0 Expect will check one time to see if $object's 
-handle contains any of the match_patterns. If $timeout is undef Expect
+one of the match_patterns, which are matched exactly by default. If you 
+want a regexp match, prefix the pattern with '-re'. 
+
+Due to o/s limitations $timeout should be a round number. If $timeout 
+is 0 Expect will check one time to see if $object's handle contains 
+any of the match_patterns. If $timeout is undef Expect
 will wait forever for a pattern to match. 
 
 If called in a scalar context, expect() will return the position of
@@ -336,6 +340,8 @@ without resetting the timeout count.
 before() returns the 'before' part of the last expect() call. If the last
 expect() call didn't match anything, exp_before() will return the entire
 output of the object accumulated before the expect() call finished.
+
+Note that this is something different than Tcl Expects before()!!
 
 
 =item $object->exp_after() I<or>

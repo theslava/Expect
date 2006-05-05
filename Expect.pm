@@ -19,7 +19,7 @@ use 5;				# 4 won't cut it.
 
 package Expect;
 
-use IO::Pty 0.97;		# We need make_slave_controlling_terminal()
+use IO::Pty 1.00;		# We need make_slave_controlling_terminal()
 use IO::Tty;
 
 use strict 'refs';
@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.15;
+  $Expect::VERSION = 1.16;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -104,6 +104,9 @@ sub spawn {
   # set up pipe to detect childs exec error
   pipe(STAT_RDR, STAT_WTR) or die "Cannot open pipe: $!";
   STAT_WTR->autoflush(1);
+  eval {
+    fcntl(STAT_WTR, F_SETFD, FD_CLOEXEC);
+  };
 
   my $pid = fork;
 
@@ -336,8 +339,8 @@ sub log_file {
 
     if (${*$self}{exp_Log_File} and ref(${*$self}{exp_Log_File}) ne 'CODE') {
       close(${*$self}{exp_Log_File});
-      ${*$self}{exp_Log_File} = undef;
     }
+    ${*$self}{exp_Log_File} = undef;
     return if (not $file);
     my $fh = $file;
     if (not ref($file)) {
@@ -427,6 +430,7 @@ sub expect {
   my $self;
   $self = shift if (ref($_[0]) and $_[0]->isa('Expect'));
   shift if defined $_[0] and $_[0] eq 'Expect';	# or as Expect->expect
+  croak "expect(): not enough arguments, should be expect(timeout, patterns...)" if @_ < 2;
   my $timeout = shift;
   my $timeout_hook = undef;
 
@@ -858,7 +862,7 @@ sub _multi_expect($$@) {
 
 	  # ugly hack for broken solaris ttys that spew <blank><backspace>
 	  # into our pretty output
-	  $buffer =~ s/ \cH//g;
+	  $buffer =~ s/ \cH//g if not ${*$exp}{exp_Raw_Pty};
 	  # Append it to the accumulator.
 	  ${*$exp}{exp_Accum} .= $buffer;
 	  if (exists ${*$exp}{exp_Max_Accum}
@@ -1255,7 +1259,8 @@ sub send_slow{
 	# .01 sec granularity should work. If we miss something it will
 	# probably get flushed later, maybe in an expect call.
 	while (select($rmask,undef,undef,.01)) {
-	  sysread($self,${*$self}{exp_Pty_Buffer},1024);
+	  my $ret = sysread($self,${*$self}{exp_Pty_Buffer},1024);
+	  last if not defined $ret or $ret == 0;
 	  # Is this necessary to keep? Probably.. #
 	  # if you need to expect it later.
 	  ${*$self}{exp_Accum}.= ${*$self}{exp_Pty_Buffer};
@@ -1568,11 +1573,13 @@ sub _undef {
 
 # clean up child processes
 sub DESTROY {
+  my $status = $?; # save this as it gets mangled by the terminating spawned children
   my $self = shift;
   if (${*$self}{exp_Do_Soft_Close}) {
     $self->soft_close();
   }
   $self->hard_close();
+  $? = $status; # restore it. otherwise deleting an Expect object may mangle $?, which is unintuitive
 }
 
 1;

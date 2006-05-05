@@ -240,6 +240,19 @@ Expect v1.15
   to exp_New_Data not set.
 
 
+Expect v1.16
+============
 
+! fixed hangup with pipe sync upon spawn by adding close-on-exec to pipe handle
+
+! fixed log_file(undef) when logging to CODE ref
+
+! fixed $? mangling in DESTROY by saving & restoring status
+
+! fixed hangup in send_slow
+
+! fixed ugly solaris hack by disabling it for raw ptys
+
++ added param check for expect()
 
 

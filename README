@@ -1,5 +1,5 @@
 
-Expect.pm v1.14
+Expect.pm v1.16
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -14,15 +14,16 @@ If you prefer manual installation, the usual
   make test
   make install
 
-should work.  I finally started a testsuite for Expect, but it doesn't
-really test anything deeper right now.  The problem is to find some
-external program to use for generating reproducible output that is
-available across all platforms.  Luckily, we can always use perl
-itself...  Contributions to the testsuite are of course welcome.
+should work.
 
 Note that IO::Tty is very system-dependend.  It has been extensively
 reworked and tested, but there still may be systems that have
 problems.
+
+Please be sure to read the FAQ section in the Expect pod manpage, 
+especially the section about using Expect to control telnet/ssh etc.
+There are other ways to work around password entry, you definitely 
+don't need Expect for ssh automatisation!
 
 The Perl Expect module was inspired more by the functionality of
 Tcl/Expect than any previous Expect-like tool such as Comm.pl or
@@ -38,14 +39,6 @@ I try to stay as close to Tcl/Expect in interface and semantics as
 possible (so I can refer questions to the Tcl/Expect docu).
 Suggestions for improvement are always welcome.
 
-[Latest rumours have it that Don plans a rewrite of Expect as a
-stand-alone library that can be easily embedded into various scripting
-languages.]
-
-There is now a FAQ section in the pod, complete with examples, so
-please let me know if there's something you'd like to see answered
-there that isn't.
-
 There are two mailing lists available, expectperl-announce and
 expectperl-discuss, at
 
@@ -59,37 +52,17 @@ and
 From the Changes file:
 ======================
 
-! changed tests to check out pty behaviour (max. string length)
+! fixed hangup with pipe sync upon spawn by adding close-on-exec to pipe handle (AIX)
 
-+ added various FAQ entries
+! fixed log_file(undef) when logging to CODE ref
 
-+ added autoflush(1) to log_file
+! fixed $? mangling in DESTROY by saving & restoring status
 
-+ split 'new' and 'spawn' to be able to set slave pty params via stty
-  before actually spawning the program
+! fixed hangup in send_slow
 
-+ added raw_pty()
+! fixed ugly solaris hack by disabling it for raw ptys
 
-+ added notransfer()
-
-+ added print_log_file(), send() now no longer prints to log file or stdout.
-
-! spawn() now synchronizes child and parent, so exec errors are reported.
-
-+ timeout handlers now also can exp_continue
-
-+ added 'raw_pty' option, also setting master to raw if isatty()
-
-+ added and corrected test for exit status; got rid of Test.pm
-
-! use 'set_raw' instead of stty("raw"); IO::Stty now optional
-
-+ updated docs & FAQs; explained how terminal sizes and SIGWINCH
-  should be propagated
-
-! fixed bug in log_file, parameter now gets set to undef.
-
-! fixed select in interconnect, may return -1 if interrupted by signal.
++ added param check for expect()
 
 
 Thanks to everybody who wrote to me, either with bug reports or
@@ -98,4 +71,4 @@ enhancement suggestions!
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2002-03-12
+2005-05-05

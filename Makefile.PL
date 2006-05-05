@@ -8,8 +8,8 @@ WriteMakefile(
 	      'NAME'	     => 'Expect',
 	      'VERSION_FROM' => 'Expect.pm',
 	      'PREREQ_PM'    => {
-                                  'IO::Tty' => 1.00,
-                                  'IO::Pty' => 1.00,
+                                  'IO::Tty' => 1.03,
+                                  'IO::Pty' => 1.03,
 				},
 	      'clean'        => { 'FILES' => '*.log' },
 	      'dist'         => { COMPRESS => 'gzip -9f', SUFFIX => 'gz' },
