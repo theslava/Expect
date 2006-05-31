@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.16
+1.17
 
 =head1 SYNOPSIS
 
@@ -114,6 +114,10 @@ It is now possible to interconnect multiple file handles (and processes) much
 like Tcl's Expect. An attempt was made to enable all the features of Tcl's
 Expect without forcing Tcl on the victim programmer :-) .
 
+Please, before you consider using Expect, read the FAQs about
+L</"I want to automate password entry for su/ssh/scp/rsh/..."> and
+L</"I want to use Expect to automate [anything with a buzzword]...">
+
 
 =head1 USAGE
 
@@ -185,10 +189,11 @@ debugging features lest you have angry code.
 
 =item $object->raw_pty(1 | 0)
 
-Set pty to raw mode before spawning.  This disables echoing and CR->LF
-translation and gives a more pipe-like behaviour (which is important
-if you want to transfer binary content).  Note that this must
-be set I<before> spawning the program. 
+Set pty to raw mode before spawning.  This disables echoing, CR->LF
+translation and an ugly hack for broken Solaris TTYs (which send
+<space><backspace> to slow things down) and thus gives a more
+pipe-like behaviour (which is important if you want to transfer binary
+content).  Note that this must be set I<before> spawning the program.
 
 
 =item $object->stty(qw(mode1 mode2...))

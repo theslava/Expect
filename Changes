@@ -256,3 +256,7 @@ Expect v1.16
 + added param check for expect()
 
 
+Expect v1.17
+============
+
+! fixed param check for expect() to allow expect(undef) et al

@@ -1,5 +1,5 @@
 
-Expect.pm v1.16
+Expect.pm v1.17
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -52,17 +52,7 @@ and
 From the Changes file:
 ======================
 
-! fixed hangup with pipe sync upon spawn by adding close-on-exec to pipe handle (AIX)
-
-! fixed log_file(undef) when logging to CODE ref
-
-! fixed $? mangling in DESTROY by saving & restoring status
-
-! fixed hangup in send_slow
-
-! fixed ugly solaris hack by disabling it for raw ptys
-
-+ added param check for expect()
+! fixed param check for expect() to allow expect(undef) et al
 
 
 Thanks to everybody who wrote to me, either with bug reports or
@@ -71,4 +61,4 @@ enhancement suggestions!
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2005-05-05
+2005-05-31

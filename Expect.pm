@@ -1,4 +1,4 @@
-#
+# -*-cperl-*-
 # Please see the .pod files for documentation. This module is copyrighted
 # as per the usual perl legalese:
 # Copyright (c) 1997 Austin Schutz.
@@ -15,11 +15,11 @@
 # Roland Giersig <RGiersig@cpan.org>
 #
 
-use 5;				# 4 won't cut it. 
+use 5.006;				# 4 won't cut it.
 
 package Expect;
 
-use IO::Pty 1.00;		# We need make_slave_controlling_terminal()
+use IO::Pty 1.03;		# We need make_slave_controlling_terminal()
 use IO::Tty;
 
 use strict 'refs';
@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.16;
+  $Expect::VERSION = 1.17;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -430,7 +430,7 @@ sub expect {
   my $self;
   $self = shift if (ref($_[0]) and $_[0]->isa('Expect'));
   shift if defined $_[0] and $_[0] eq 'Expect';	# or as Expect->expect
-  croak "expect(): not enough arguments, should be expect(timeout, patterns...)" if @_ < 2;
+  croak "expect(): not enough arguments, should be expect(timeout, [patterns...])" if @_ < 1;
   my $timeout = shift;
   my $timeout_hook = undef;
 
