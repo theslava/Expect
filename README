@@ -1,5 +1,5 @@
 
-Expect.pm v1.17
+Expect.pm v1.18
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -52,13 +52,17 @@ and
 From the Changes file:
 ======================
 
-! fixed param check for expect() to allow expect(undef) et al
+! added another pipe to synchronize spawning. Closing the slave in the
+  parent can lead to a hang if the child already wrote something into
+  it...
+
+! fixed REs in test to deal with shell prompts
 
 
-Thanks to everybody who wrote to me, either with bug reports or
-enhancement suggestions!
+Thanks to everybody who wrote to me, either with bug reports,
+enhancement suggestions or especially fixes!
 
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2005-05-31
+2005-07-11

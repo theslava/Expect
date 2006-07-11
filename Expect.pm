@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.17;
+  $Expect::VERSION = 1.18;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -102,10 +102,12 @@ sub spawn {
   ${*$self}{"exp_Command"} = \@cmd;
 
   # set up pipe to detect childs exec error
-  pipe(STAT_RDR, STAT_WTR) or die "Cannot open pipe: $!";
-  STAT_WTR->autoflush(1);
+  pipe(FROM_CHILD, TO_PARENT) or die "Cannot open pipe: $!";
+  pipe(FROM_PARENT, TO_CHILD) or die "Cannot open pipe: $!";
+  TO_PARENT->autoflush(1);
+  TO_CHILD->autoflush(1);
   eval {
-    fcntl(STAT_WTR, F_SETFD, FD_CLOEXEC);
+    fcntl(TO_PARENT, F_SETFD, FD_CLOEXEC);
   };
 
   my $pid = fork;
@@ -119,14 +121,16 @@ sub spawn {
     # parent
     my $errno;
     ${*$self}{exp_Pid} = $pid;
-    close STAT_WTR;
+    close TO_PARENT;
+    close FROM_PARENT;
     $self->close_slave();
     $self->set_raw() if $self->raw_pty and isatty($self);
+    close TO_CHILD; # so child gets EOF and can go ahead
 
     # now wait for child exec (eof due to close-on-exit) or exec error
-    my $errstatus = sysread(STAT_RDR, $errno, 256);
+    my $errstatus = sysread(FROM_CHILD, $errno, 256);
     die "Cannot sync with child: $!" if not defined $errstatus;
-    close STAT_RDR;
+    close FROM_CHILD;
     if ($errstatus) {
       $! = $errno+0;
       warn "Cannot exec(@cmd): $!\n" if $^W;
@@ -135,7 +139,8 @@ sub spawn {
   }
   else {
     # child
-    close STAT_RDR;
+    close FROM_CHILD;
+    close TO_CHILD;
 
     $self->make_slave_controlling_terminal();
     my $slv = $self->slave()
@@ -143,6 +148,13 @@ sub spawn {
 
     $slv->set_raw() if $self->raw_pty;
     close($self);
+
+    # wait for parent before we detach
+    my $buffer;
+    my $errstatus = sysread(FROM_PARENT, $buffer, 256);
+    die "Cannot sync with parent: $!" if not defined $errstatus;
+    close FROM_PARENT;
+
     close(STDIN);
     open(STDIN,"<&". $slv->fileno())
       or die "Couldn't reopen STDIN for reading, $!\n";
@@ -154,7 +166,7 @@ sub spawn {
       or die "Couldn't reopen STDERR for writing, $!\n";
 
     { exec(@cmd) };
-    print STAT_WTR $!+0;
+    print TO_PARENT $!+0;
     die "Cannot exec(@cmd): $!\n";
   }
 

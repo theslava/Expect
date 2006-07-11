@@ -262,12 +262,12 @@ _EOT_
 
 {
   print "\nTesting controlling terminal...\n\n";
-  my $exp = new Expect($Perl . q{ -MIO::Handle -e 'open(TTY, "+>/dev/tty") or die "no controlling terminal"; autoflush TTY 1; print TTY "prompt: "; $s = <TTY>; chomp $s; print "uc: \U$s\n"; close TTY; exit 0;'});
+  my $exp = new Expect($Perl . q{ -MIO::Handle -e 'open(TTY, "+>/dev/tty") or die "no controlling terminal"; autoflush TTY 1; print TTY "Expect_test_prompt: "; $s = <TTY>; chomp $s; print "uc: \U$s\n"; close TTY; exit 0;'});
 
   my $pwd = "pAsswOrd";
   $exp->log_file("test_dev_tty.log");
   $exp->expect(10,
-	       [ qr/^prompt:/, sub {
+	       [ qr/Expect_test_prompt:/, sub {
 		   my $self = shift;
 		   $self->send("$pwd\n");
 		   $exp->log_file(undef);
@@ -292,9 +292,9 @@ _EOT_
 print "\nChecking if exit status is returned correctly...\n\n";
 
 {
-  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; exit(42);'});
+  my $exp = new Expect($Perl . q{ -e 'print "Expect_test_pid: $$\n"; sleep 2; exit(42);'});
   $exp->expect(10,
-               [ qr/^pid:/, sub { my $self = shift; } ],
+               [ qr/Expect_test_pid:/, sub { my $self = shift; } ],
                [ eof => sub { print "eof\n"; } ],
                [ timeout => sub { print "timeout\n";} ],
               );
@@ -307,9 +307,9 @@ print "\nChecking if exit status is returned correctly...\n\n";
 print "\nChecking if signal exit status is returned correctly...\n\n";
 
 {
-  my $exp = new Expect($Perl . q{ -e 'print "pid: $$\n"; sleep 2; kill 15, $$;'});
+  my $exp = new Expect($Perl . q{ -e 'print "Expect_test_pid: $$\n"; sleep 2; kill 15, $$;'});
   $exp->expect(10,
-               [ qr/^pid:/, sub { my $self = shift; } ],
+               [ qr/Expect_test_pid:/, sub { my $self = shift; } ],
                [ eof => sub { print "eof\n"; } ],
                [ timeout => sub { print "timeout\n";} ],
               );
