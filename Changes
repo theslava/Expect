@@ -270,3 +270,13 @@ Expect v1.18
   it...
 
 ! fixed REs in test to deal with shell prompts
+
+Expect v1.19
+============
+
+! fixed non-localized usage of $_
+
++ added new example ssh.pl
+
+
+

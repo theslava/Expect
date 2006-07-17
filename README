@@ -1,5 +1,5 @@
 
-Expect.pm v1.18
+Expect.pm v1.19
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -52,12 +52,9 @@ and
 From the Changes file:
 ======================
 
-! added another pipe to synchronize spawning. Closing the slave in the
-  parent can lead to a hang if the child already wrote something into
-  it...
+! fixed non-localized usage of $_
 
-! fixed REs in test to deal with shell prompts
-
++ added new example ssh.pl
 
 Thanks to everybody who wrote to me, either with bug reports,
 enhancement suggestions or especially fixes!
@@ -65,4 +62,4 @@ enhancement suggestions or especially fixes!
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2005-07-11
+2005-07-17

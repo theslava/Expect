@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.18;
+  $Expect::VERSION = 1.19;
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -729,10 +729,8 @@ sub _multi_expect($$@) {
 			  "'\r\n",
 			  "    Matchlist: (",
 			  join(",  ",
-			       map("`"
-				   . $exp->_trim_length(_make_readable(($_)))
-				   . "'",
-				   @matchlist),
+			       map { "`".$exp->_trim_length(_make_readable(($_)))."'"
+				   } @matchlist,
 			       ),
 			  ")\r\n",
 			 ) if (${*$exp}{exp_Exp_Internal});
@@ -1073,7 +1071,7 @@ sub interconnect {
   my ($read_mask,$temp_mask) = ('','');
 
   # Get read/write handles
-  foreach $handle(@handles) {
+  foreach $handle (@handles) {
     $temp_mask = '';
     vec($temp_mask,$handle->fileno(),1) = 1;
     # Under Linux w/ 5.001 the next line comes up w/ 'Uninit var.'.
@@ -1084,11 +1082,11 @@ sub interconnect {
   }
   if ($Expect::Debug) {
     print STDERR "Read handles:\r\n";
-    foreach $handle(@handles) {
+    foreach $handle (@handles) {
       print STDERR "\tRead handle: ";
       print STDERR "'${*$handle}{exp_Pty_Handle}'\r\n";
       print STDERR "\t\tListen Handles:";
-      foreach $write_handle(@{${*$handle}{exp_Listen_Group}}) {
+      foreach $write_handle (@{${*$handle}{exp_Listen_Group}}) {
 	print STDERR " '${*$write_handle}{exp_Pty_Handle}'";
       }
       print STDERR ".\r\n";
@@ -1097,7 +1095,7 @@ sub interconnect {
 
   #  I think if we don't set raw/-echo here we may have trouble. We don't
   # want a bunch of echoing crap making all the handles jabber at each other.
-  foreach $handle(@handles) {
+  foreach $handle (@handles) {
     unless (${*$handle}{"exp_Manual_Stty"}) {
       # This is probably O/S specific.
       ${*$handle}{exp_Stored_Stty} = $handle->exp_stty('-g');
@@ -1144,7 +1142,7 @@ sub interconnect {
     $eout = 0 unless defined ($eout);
     @ebits = split(//,unpack('b*',$eout));
     #    print "Ebits: $eout\r\n";
-    foreach $read_handle(@handles) {
+    foreach $read_handle (@handles) {
       if ($bits[$read_handle->fileno()]) {
 	$nread = sysread( $read_handle, ${*$read_handle}{exp_Pty_Buffer}, 1024 );
 	# Appease perl -w
@@ -1205,7 +1203,7 @@ sub interconnect {
 	}
     }
   }
-  foreach $handle(@handles) {
+  foreach $handle (@handles) {
     unless (${*$handle}{"exp_Manual_Stty"}) {
       $handle->exp_stty(${*$handle}{exp_Stored_Stty});
     }
@@ -1256,8 +1254,9 @@ sub send_slow{
   my($char,@linechars,$nfound,$rmask);
   my($sleep_time) = shift;
   # Flushing makes it so each character can be seen separately.
-  while ($_=shift) {
-    @linechars = split ('');
+  my $chunk;
+  while ($chunk = shift) {
+    @linechars = split ('', $chunk);
     foreach $char (@linechars) {
       #     How slow?
       select (undef,undef,undef,$sleep_time);
@@ -1497,29 +1496,29 @@ sub _init_vars {
 
 
 sub _make_readable {
-  $_ = shift;
-  $_ = '' unless defined ($_);
-  study;			# Speed things up?
-  s/\\/\\\\/g;			# So we can tell easily(?) what is a backslash
-  s/\n/\\n/g;
-  s/\r/\\r/g;
-  s/\t/\\t/g;
-  s/\'/\\\'/g;			# So we can tell whassa quote and whassa notta quote.
-  s/\"/\\\"/g;
+  my $s = shift;
+  $s = '' unless defined ($_);
+  study $s;		# Speed things up?
+  $s =~ s/\\/\\\\/g;	# So we can tell easily(?) what is a backslash
+  $s =~ s/\n/\\n/g;
+  $s =~ s/\r/\\r/g;
+  $s =~ s/\t/\\t/g;
+  $s =~ s/\'/\\\'/g;	# So we can tell whassa quote and whassa notta quote.
+  $s =~ s/\"/\\\"/g;
   # Formfeed (does anyone use formfeed?)
-  s/\f/\\f/g;
-  s/\010/\\b/g;
+  $s =~ s/\f/\\f/g;
+  $s =~ s/\010/\\b/g;
   # escape control chars high/low, but allow ISO 8859-1 chars
-  s/[\000-\037\177-\237\377]/sprintf("\\%03lo",ord($&))/ge;
+  $s =~ s/[\000-\037\177-\237\377]/sprintf("\\%03lo",ord($&))/ge;
 
-  return $_;
+  return $s;
 }
 
 sub _trim_length {
   # This is sort of a reverse truncation function
   # Mostly so we don't have to see the full output when we're using
   # Also used if Max_Accum gets set to limit the size of the accumulator
-  # for matching functions. 
+  # for matching functions.
   # exp_internal
   my($self) = shift;
   my($string) = shift;
@@ -1545,7 +1544,7 @@ sub _print_handles {
   my($print_this) = shift;
   my($handle);
   if (${*$self}{exp_Log_Group}) {
-    foreach $handle(@{${*$self}{exp_Listen_Group}}) {
+    foreach $handle (@{${*$self}{exp_Listen_Group}}) {
       $print_this = '' unless defined ($print_this);
       # Appease perl -w
       print STDERR "Printed '".$self->_trim_length(_make_readable($print_this))."' to ${*$handle}{exp_Pty_Handle} from ${*$self}{exp_Pty_Handle}.\r\n" if (${*$handle}{"exp_Debug"} > 1);

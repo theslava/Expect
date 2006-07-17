@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.18
+1.19
 
 =head1 SYNOPSIS
 
@@ -691,8 +691,13 @@ expression. I think this is handy.
 =head1 CONTRIBUTIONS
 
 Lee Eakin <leakin@japh.itg.ti.com> has ported the kibitz script
-from Tcl/Expect to Perl/Expect.  You can find it in the examples/
-subdir.  Thanks Lee!
+from Tcl/Expect to Perl/Expect.  
+
+Jeff Carr <jcarr@linuxmachines.com> provided a simple example of how
+handle terminal window resize events (transmitted via the WINCH
+signal) in a ssh session.
+
+You can find both scripts in the examples/ subdir.  Thanks to both!
 
 Historical notes:
 
@@ -1060,6 +1065,10 @@ terminal size and propagate the signal to the spawned application:
 
   $exp->interact();
 
+There is an example file ssh.pl in the examples/ subdir that shows how
+this works with ssh. Please note that I do strongly object against
+using Expect to automate ssh login, as there are better way to do that
+(see L<ssh-keygen>).
 
 =head2 I noticed that the test uses a string that resembles, but not exactly matches, a well-known sentence that contains every character.  What does that mean?
 
@@ -1091,8 +1100,14 @@ And then $process->expect($timeout,'____END____','other','patterns');
 
 =head2 How to automate login
 
-  my $exp = Expect->spawn("telnet localhost")
-    or die "Cannot spawn telnet: $!\n";;
+  my $telnet = new Net::Telnet ("remotehost") # see Net::Telnet
+    or die "Cannot telnet to remotehost: $!\n";;
+  my $exp = Expect->exp_init($telnet);
+
+  # deprecated use of spawned telnet command
+  # my $exp = Expect->spawn("telnet localhost")
+  #   or die "Cannot spawn telnet: $!\n";;
+
   my $spawn_ok;
   $exp->expect($timeout,
 	       [
@@ -1196,11 +1211,19 @@ and
   http://lists.sourceforge.net/lists/listinfo/expectperl-discuss
 
 
+=head1 BUG TRACKING
+
+You can use the CPAN Request Tracker http://rt.cpan.org/ and submit
+new bugs under
+
+  http://rt.cpan.org/Ticket/Create.html?Queue=Expect
+
+
 =head1 AUTHORS
 
 (c) 1997 Austin Schutz E<lt>F<ASchutz@users.sourceforge.net>E<gt> (retired)
 
-expect() interface & functionality enhancements (c) 1999-2002 Roland Giersig.
+expect() interface & functionality enhancements (c) 1999-2006 Roland Giersig.
 
 This module is now maintained by Roland Giersig E<lt>F<RGiersig@cpan.org>E<gt>
 
