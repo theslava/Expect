@@ -278,5 +278,18 @@ Expect v1.19
 
 + added new example ssh.pl
 
+Expect v1.20
+============
+
++ added early return to send and send_slow if filehandle was closed
+
++ added test for send_slow
+
+! fixed bug in expect() param handling (exact pattern "0" was ignored)
+
+! fixed bug in _make_readable()
+
++ now included example ssh.pl in MANIFEST so it gets packaged :-(
+
 
 

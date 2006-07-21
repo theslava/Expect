@@ -1,5 +1,5 @@
 
-Expect.pm v1.19
+Expect.pm v1.20
 ===============
 
 Expect requires the latest version of IO::Tty, also available from
@@ -52,9 +52,15 @@ and
 From the Changes file:
 ======================
 
-! fixed non-localized usage of $_
++ added early return to send and send_slow if filehandle was closed
 
-+ added new example ssh.pl
++ added test for send_slow
+
+! fixed bug in expect() param handling (exact pattern "0" was ignored)
+
+! fixed bug in _make_readable()
+
++ now included example ssh.pl in MANIFEST so it gets packaged :-(
 
 Thanks to everybody who wrote to me, either with bug reports,
 enhancement suggestions or especially fixes!
@@ -62,4 +68,4 @@ enhancement suggestions or especially fixes!
 Roland Giersig (maintainer of Expect.pm, IO::Tty, IO::Stty, Tie::Persistent)
 RGiersig@cpan.org
 
-2005-07-17
+2005-07-20

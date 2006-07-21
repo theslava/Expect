@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.19
+1.20
 
 =head1 SYNOPSIS
 

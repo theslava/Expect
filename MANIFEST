@@ -19,4 +19,5 @@ examples/kibitz/Changelog
 examples/kibitz/README
 examples/kibitz/kibitz
 examples/kibitz/kibitz.man
+examples/ssh.pl
 META.yml                                 Module meta-data (added by MakeMaker)

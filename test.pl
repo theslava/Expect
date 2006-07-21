@@ -4,7 +4,7 @@ $^W = 1;			# warnings too
 
 my ($testnr, $maxnr, $oknr);
 
-BEGIN { $testnr = 1; $maxnr = 36; print "$testnr..$maxnr\n"; }
+BEGIN { $testnr = 1; $maxnr = 43; print "$testnr..$maxnr\n"; }
 sub ok ($) {
   if ($_[0]) {
     print "ok ", $testnr++, "\n";
@@ -174,6 +174,26 @@ print "\nTesting raw reversing...\n\n";
   }
   ok($called >= @Strings);
   $exp->log_file(undef);
+
+  # now with send_slow
+  $called = 0;
+  $exp->log_file(sub { $called++; });
+  my $delay = 0.1;
+  foreach my $s (@Strings) {
+    my $rev = scalar reverse $s;
+    my $now = time;
+    $exp->send_slow($delay, "$s\n");
+    $exp->expect(10,
+		 [ quotemeta($rev) => sub { ok(1); }],
+		 [ timeout => sub { ok(0); die "Timeout"; } ],
+		 [ eof => sub { ok(0); die "EOF"; } ],
+		);
+    my $dur = time - $now;
+    ok($dur > length($s) * $delay);
+  }
+  ok($called >= @Strings);
+  $exp->log_file(undef);
+
 
   print <<_EOT_;
 

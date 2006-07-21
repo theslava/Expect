@@ -37,7 +37,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = 1.19;
+  $Expect::VERSION = '1.20';
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -440,8 +440,14 @@ sub exp_continue_timeout() { "exp_continue_timeout" }
 
 sub expect {
   my $self;
-  $self = shift if (ref($_[0]) and $_[0]->isa('Expect'));
-  shift if defined $_[0] and $_[0] eq 'Expect';	# or as Expect->expect
+  print STDERR ("expect(@_) called...\n") if $Expect::Debug;
+  if (defined($_[0])) {
+    if (ref($_[0]) and $_[0]->isa('Expect')) {
+      $self = shift;
+    } elsif ($_[0] eq 'Expect') {
+      shift;	# or as Expect->expect
+    }
+  }
   croak "expect(): not enough arguments, should be expect(timeout, [patterns...])" if @_ < 1;
   my $timeout = shift;
   my $timeout_hook = undef;
@@ -465,7 +471,8 @@ sub expect {
   # Let's make a list of patterns wanting to be evaled as regexps.
   my $parm;
   my $parm_nr = 1;
-  while ($parm = shift) {
+  while (defined($parm = shift)) {
+    print STDERR ("expect(): handling param '$parm'...\n") if $Expect::Debug;
     if (ref($parm)) {
       if (ref($parm) eq 'ARRAY') {
 	my $err = _add_patterns_to_list(\@pattern_list, \@timeout_list,
@@ -483,6 +490,8 @@ sub expect {
       # not a ref, is an option or raw pattern
       if (substr($parm, 0, 1) eq '-') {
 	# it's an option
+	print STDERR ("expect(): handling option '$parm'...\n")
+	  if $Expect::Debug;
 	if ($parm eq '-i') {
 	  # first add collected patterns to object list
 	  if (scalar(@$curr_list)) {
@@ -522,6 +531,8 @@ sub expect {
 	    push @pattern_list, [ $parm_nr, '-ex', $parm, shift ];
 	  }
 	} else {
+	  print STDERR ("expect(): exact match '$parm'...\n")
+	    if $Expect::Debug;
 	  push @pattern_list, [ $parm_nr, '-ex', $parm, undef ];
 	}
 	$parm_nr++;
@@ -1231,6 +1242,7 @@ sub print_log_file {
 # processes...
 sub print (@) {
   my ($self, @args) = @_;
+  return if not defined $self->fileno(); # skip if closed
   if (${*$self}{exp_Exp_Internal}) {
     my $args = _make_readable(join('', @args));
     cluck "Sending '$args' to ${*$self}{exp_Pty_Handle}\r\n";
@@ -1252,6 +1264,7 @@ sub print (@) {
 sub send_slow{
   my ($self) = shift;
   my($char,@linechars,$nfound,$rmask);
+  return if not defined $self->fileno(); # skip if closed
   my($sleep_time) = shift;
   # Flushing makes it so each character can be seen separately.
   my $chunk;
@@ -1497,7 +1510,7 @@ sub _init_vars {
 
 sub _make_readable {
   my $s = shift;
-  $s = '' unless defined ($_);
+  $s = '' if not defined ($s);
   study $s;		# Speed things up?
   $s =~ s/\\/\\\\/g;	# So we can tell easily(?) what is a backslash
   $s =~ s/\n/\\n/g;
