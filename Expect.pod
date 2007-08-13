@@ -4,7 +4,7 @@ Expect.pm - Expect for Perl
 
 =head1 VERSION
 
-1.20
+1.21
 
 =head1 SYNOPSIS
 
@@ -92,6 +92,7 @@ There are several configurable package variables that affect the behavior of Exp
 
   $Expect::Debug;
   $Expect::Exp_Internal;
+  $Expect::IgnoreEintr;
   $Expect::Log_Group;
   $Expect::Log_Stdout;
   $Expect::Manual_Stty;
@@ -110,7 +111,7 @@ Expect.pm is an attempt to have more of a switch() & case feeling to make
 decision processing more fluid.  Three separate types of debugging have 
 been implemented to make code production easier.
 
-It is now possible to interconnect multiple file handles (and processes) much
+It is possible to interconnect multiple file handles (and processes) much
 like Tcl's Expect. An attempt was made to enable all the features of Tcl's
 Expect without forcing Tcl on the victim programmer :-) .
 
@@ -140,6 +141,11 @@ Initializes $new_handle_object for use with other Expect functions. It must
 be passed a B<_reference_> to FILEHANDLE if you want it to work properly. 
 IO::File objects are preferable. Returns a reference to the newly created
 object.
+
+You can use only real filehandles, certain tied filehandles
+(e.g. Net::SSH2) that lack a fileno() will not work. Net::Telnet
+objects can be used but have been reported to work only for certain
+hosts. YMMV.
 
 
 =item Expect->spawn($command, @parameters) I<or>
@@ -276,9 +282,9 @@ of the error. Possible values are undef, indicating no error,
 match, '2:EOF' indicating an eof was read from $object, '3: spawn
 id($fileno) died' indicating that the process exited before matching
 and '4:$!' indicating whatever error was set in $ERRNO during the last
-read on $object's handle. All handles indicated by set_group plus
-STDOUT will have all data to come out of $object printed to them
-during expect() if log_group and log_stdout are set.
+read on $object's handle or during select(). All handles indicated by
+set_group plus STDOUT will have all data to come out of $object
+printed to them during expect() if log_group and log_stdout are set.
 
 Changed from older versions is the regular expression handling. By
 default now all strings passed to expect() are treated as literals. To
@@ -661,6 +667,11 @@ to terminate properly.  Set this to '1' for old behaviour.
 Defaults to 0. Newly created objects have a $object->exp_internal()
 value of $Expect::Exp_Internal. See $object->exp_internal().
 
+=item $Expect::IgnoreEintr
+
+Defaults to 0. If set to 1, when waiting for new data, Expect will
+ignore EINTR errors and restart the select() call instead.
+
 =item $Expect::Log_Group
 
 Defaults to 1. Newly created objects have a $object->log_group()
@@ -869,6 +880,15 @@ already can handle those protocols.  Don't try to do HTTP requests by
 spawning telnet to port 80, use LWP instead.  To automate FTP, take a
 look at L<Net::FTP> or C<ncftp> (http://www.ncftp.org).  You don't use
 a screwdriver to hammer in your nails either, or do you?
+
+
+=head2 Is it possible to use threads with Expect?
+
+Basically yes, with one restriction: you must spawn() your programs in
+the main thread and then pass the Expect objects to the handling
+threads. The reason is that spawn() uses fork(), and L<perlthrtut>:
+
+  "Thinking of mixing fork() and threads?  Please lie down and wait until the feeling passes."
 
 
 =head2 I want to log the whole session to a file.

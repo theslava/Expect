@@ -25,11 +25,12 @@ use IO::Tty;
 use strict 'refs';
 use strict 'vars';
 use strict 'subs';
-use POSIX;			# For setsid. 
-use Fcntl;			# For checking file handle settings.
+use POSIX qw(:sys_wait_h :unistd_h); # For WNOHANG and isatty
+use Fcntl qw(:DEFAULT); # For checking file handle settings.
 use Carp qw(cluck croak carp confess);
-use IO::Handle;
-use Exporter;
+use IO::Handle ();
+use Exporter ();
+use Errno;
 
 # This is necessary to make routines within Expect work.
 
@@ -37,7 +38,7 @@ use Exporter;
 @Expect::EXPORT = qw(expect exp_continue exp_continue_timeout);
 
 BEGIN {
-  $Expect::VERSION = '1.20';
+  $Expect::VERSION = '1.21';
   # These are defaults which may be changed per object, or set as
   # the user wishes.
   # This will be unset, since the default behavior differs between 
@@ -47,6 +48,7 @@ BEGIN {
   $Expect::Debug = 0;
   $Expect::Exp_Max_Accum = 0; # unlimited
   $Expect::Exp_Internal = 0;
+  $Expect::IgnoreEintr = 0;
   $Expect::Manual_Stty = 0;
   $Expect::Multiline_Matching = 1;
   $Expect::Do_Soft_Close = 0;
@@ -107,7 +109,7 @@ sub spawn {
   TO_PARENT->autoflush(1);
   TO_CHILD->autoflush(1);
   eval {
-    fcntl(TO_PARENT, F_SETFD, FD_CLOEXEC);
+    fcntl(TO_PARENT, Fcntl::F_SETFD, Fcntl::FD_CLOEXEC);
   };
 
   my $pid = fork;
@@ -783,10 +785,24 @@ sub _multi_expect($$@) {
 		  defined($time_left)? $time_left : 'unlimited',
 		  " seconds)...\r\n",
 		 ) if ($Expect::Exp_Internal or $Expect::Debug);
-    my $nfound = select($rmask, undef, undef, $time_left);
-
+    my $nfound;
+  SELECT: {
+      $nfound = select($rmask, undef, undef, $time_left);
+      if ($nfound < 0) {
+	if ($!{EINTR} and $Expect::IgnoreEintr) {
+	  print STDERR ("ignoring EINTR, restarting select()...\r\n")
+	    if ($Expect::Exp_Internal or $Expect::Debug);
+	  next SELECT;
+	}
+	print STDERR ("select() returned error code '$!'\r\n")
+	  if ($Expect::Exp_Internal or $Expect::Debug);
+	# returned error
+	$err = "4:$!";
+	last READLOOP;
+      }
+    }
     # go until we don't find something (== timeout).
-    if (not $nfound) {
+    if ($nfound == 0) {
       # No pattern, no EOF. Did we time out?
       $err = "1:TIMEOUT";
       foreach my $pat (@_) {
@@ -861,7 +877,7 @@ sub _multi_expect($$@) {
 	    }
 	    # is it dead?
 	    if (defined(${*$exp}{exp_Pid})) {
-	      my $ret = waitpid(${*$exp}{exp_Pid}, WNOHANG);
+	      my $ret = waitpid(${*$exp}{exp_Pid}, POSIX::WNOHANG);
 	      if ($ret == ${*$exp}{exp_Pid}) {
 		printf STDERR ("%s: exit(0x%02X)\r\n", 
 			       ${*$exp}{exp_Pty_Handle}, $?)

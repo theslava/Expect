@@ -4,7 +4,7 @@ $^W = 1;			# warnings too
 
 my ($testnr, $maxnr, $oknr);
 
-BEGIN { $testnr = 1; $maxnr = 43; print "$testnr..$maxnr\n"; }
+BEGIN { $testnr = 1; $maxnr = 42; print "$testnr..$maxnr\n"; }
 sub ok ($) {
   if ($_[0]) {
     print "ok ", $testnr++, "\n";
@@ -293,7 +293,7 @@ _EOT_
 		   $exp->log_file(undef);
 		   exp_continue;
 		 } ],
-	       [ qr/^uc:\s*(\w+)/, sub {
+	       [ qr/(?m:^uc:\s*(\w+))/, sub {
 		   my $self = shift;
 		   my ($s) = $self->matchlist;
 		   chomp $s;
@@ -352,8 +352,8 @@ __EOT__
 {
   my $exp = new Expect($Perl . q{ -e 'close STDIN; close STDOUT; close STDERR; sleep 3;'});
   $exp->expect(2,
-               [ eof => sub { print "EOF\n"; ok(1); } ],
-               [ timeout => sub { print "TIMEOUT\nSorry, you may not notice if the spawned process closes the pty.\n"; ok(0);} ],
+               [ eof => sub { print "EOF\n"; } ],
+               [ timeout => sub { print "TIMEOUT\nSorry, you may not notice if the spawned process closes the pty.\n"; } ],
               );
   $exp->hard_close();
 }
