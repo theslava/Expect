@@ -793,7 +793,7 @@ sub _multi_expect($$@) {
 	if ($!{EINTR} and $Expect::IgnoreEintr) {
 	  print STDERR ("ignoring EINTR, restarting select()...\r\n")
 	    if ($Expect::Exp_Internal or $Expect::Debug);
-	  next SELECT;
+	  redo SELECT;
 	}
 	print STDERR ("select() returned error code '$!'\r\n")
 	  if ($Expect::Exp_Internal or $Expect::Debug);
