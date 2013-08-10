@@ -1558,7 +1558,8 @@ sub _trim_length {
   # purposes) AND debug >= 3, don't trim.
   return($string) if (defined ($self) and
 		      ${*$self}{"exp_Debug"} >= 3 and (!(defined($length))));
-  my($indicate_truncation) = '...' unless $length;
+  my $indicate_truncation = q{};
+  $indicate_truncation = '...' unless $length;
   $length = 1021 unless $length;
   return($string) unless $length < length($string);
   # We wouldn't want the accumulator to begin with '...' if max_accum is passed
