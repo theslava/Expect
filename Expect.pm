@@ -157,6 +157,7 @@ sub spawn {
     die "Cannot sync with parent: $!" if not defined $errstatus;
     close FROM_PARENT;
 
+    POSIX::close(1);
     close(STDIN);
     open(STDIN,"<&". $slv->fileno())
       or die "Couldn't reopen STDIN for reading, $!\n";
